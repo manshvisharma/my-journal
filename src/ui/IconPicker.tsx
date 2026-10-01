@@ -126,6 +126,17 @@ export function renderFolderIcon(
   className = 'w-5 h-5',
   style?: React.CSSProperties
 ): React.ReactNode {
+  if (iconName && (iconName.startsWith('emoji:') || /\p{Extended_Pictographic}/u.test(iconName))) {
+    const emoji = iconName.startsWith('emoji:') ? iconName.slice(6) : iconName;
+    return (
+      <span
+        className="inline-flex items-center justify-center leading-none select-none text-[1.2em]"
+        style={style}
+      >
+        {emoji}
+      </span>
+    );
+  }
   const IconComp = FOLDER_ICONS[iconName] || BookOpen;
   return <IconComp className={className} style={style} />;
 }
@@ -141,8 +152,58 @@ export const IconPicker: React.FC<IconPickerProps> = ({
   onSelect,
   accentColor = '#6B74F5',
 }) => {
+  const emojiInputRef = React.useRef<HTMLInputElement>(null);
+  const isEmojiSelected = selectedIcon.startsWith('emoji:') || /\p{Extended_Pictographic}/u.test(selectedIcon);
+  const currentEmoji = isEmojiSelected
+    ? selectedIcon.startsWith('emoji:')
+      ? selectedIcon.slice(6)
+      : selectedIcon
+    : null;
+
   return (
-    <div className="grid grid-cols-7 sm:grid-cols-9 gap-2.5 max-h-56 overflow-y-auto p-1">
+    <div className="grid grid-cols-7 sm:grid-cols-9 gap-2.5 max-h-56 overflow-y-auto p-1 scrollbar-thin">
+      {/* 1st option: Smartphone Native Emoji Picker */}
+      <div className="relative w-10 h-10">
+        <button
+          type="button"
+          onClick={() => {
+            emojiInputRef.current?.focus();
+          }}
+          style={{
+            borderColor: isEmojiSelected ? accentColor : undefined,
+            backgroundColor: isEmojiSelected ? `${accentColor}25` : undefined,
+          }}
+          className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
+            isEmojiSelected
+              ? 'ring-2 ring-app-accent border-2 scale-105 shadow-md'
+              : 'bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/15 border border-black/5 dark:border-white/10 active:scale-95'
+          }`}
+          title="Choose Emoji"
+          aria-label="Choose Emoji"
+        >
+          <span className="text-[19px] leading-none select-none">
+            {currentEmoji || '😀'}
+          </span>
+        </button>
+        {/* Hidden input to trigger native iOS / Android Emoji Keyboard */}
+        <input
+          ref={emojiInputRef}
+          type="text"
+          className="absolute inset-0 opacity-0 cursor-pointer pointer-events-auto"
+          aria-label="Type or select emoji"
+          onChange={(e) => {
+            const val = e.target.value.trim();
+            if (val) {
+              // Extract the last emoji character
+              const chars = Array.from(val);
+              const lastChar = chars[chars.length - 1];
+              onSelect(`emoji:${lastChar}`);
+            }
+          }}
+        />
+      </div>
+
+      {/* SVG Folder Icons */}
       {Object.entries(FOLDER_ICONS).map(([name, Comp]) => {
         const isSelected = selectedIcon === name;
         return (
@@ -157,8 +218,8 @@ export const IconPicker: React.FC<IconPickerProps> = ({
             }}
             className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
               isSelected
-                ? 'ring-2 ring-white/50 border-2 scale-105'
-                : 'bg-white/6 hover:bg-white/12 text-white/80 active:scale-95'
+                ? 'ring-2 ring-app-accent border-2 scale-105 shadow-md'
+                : 'bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/15 text-app-text-primary dark:text-white/80 border border-black/5 dark:border-white/10 active:scale-95'
             }`}
             title={name}
             aria-label={name}

@@ -373,7 +373,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
       <button
         type="button"
         onClick={onNewEntry}
-        className="md:hidden fixed bottom-[calc(1.5rem+env(safe-area-inset-bottom,0px))] right-5 w-[52px] h-[52px] rounded-full bg-app-accent hover:bg-app-accent-light active:scale-95 text-white flex items-center justify-center shadow-lg shadow-indigo-500/35 z-40 transition-transform"
+        className="md:hidden fixed bottom-[calc(0.75rem+env(safe-area-inset-bottom,0px))] right-5 w-[52px] h-[52px] rounded-full bg-app-accent hover:bg-app-accent-light active:scale-95 text-white flex items-center justify-center shadow-lg shadow-indigo-500/35 z-40 transition-transform"
         aria-label="New Entry"
       >
         <Plus className="w-[22px] h-[22px] stroke-[2.5]" />

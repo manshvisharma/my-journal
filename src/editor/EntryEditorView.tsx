@@ -521,17 +521,18 @@ export const EntryEditorView: React.FC<EntryEditorViewProps> = ({
 
   return (
     <div className="relative flex flex-col h-full w-full bg-app-bg overflow-hidden select-none">
-      {/* Top Header Bar */}
-      <header className="flex items-center justify-between px-4 py-3 sm:px-8 border-b border-app-hairline shrink-0 backdrop-blur-md z-30">
-        <button
-          type="button"
-          onClick={handleBackClick}
-          className="flex items-center gap-1.5 p-2 -ml-2 rounded-full text-app-accent hover:opacity-80 transition"
-          aria-label="Back"
-        >
-          <ChevronLeft className="w-5 h-5" />
-          <span className="text-sm font-medium hidden sm:inline">Journals</span>
-        </button>
+      {/* Top Header Bar with iOS Safe Area Clearance */}
+      <header className="px-4 sm:px-8 pt-safe border-b border-app-hairline shrink-0 backdrop-blur-md z-30">
+        <div className="h-14 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={handleBackClick}
+            className="flex items-center gap-1.5 p-2 -ml-2 rounded-full text-app-accent hover:opacity-80 transition"
+            aria-label="Back"
+          >
+            <ChevronLeft className="w-5 h-5" />
+            <span className="text-sm font-medium hidden sm:inline">Journals</span>
+          </button>
 
         {/* Date Centered (Tapping opens IOSDateTimePicker) */}
         <button
@@ -598,7 +599,8 @@ export const EntryEditorView: React.FC<EntryEditorViewProps> = ({
             </button>
           )}
         </div>
-      </header>
+      </div>
+    </header>
 
 
       {/* Multi-device collision warning banner */}
@@ -635,7 +637,7 @@ export const EntryEditorView: React.FC<EntryEditorViewProps> = ({
       )}
 
       {/* Editor Content Area */}
-      <div className="flex-1 overflow-y-auto overscroll-contain px-4 sm:px-8 py-6 max-w-3xl w-full mx-auto text-app-text-primary">
+      <div className="flex-1 overflow-y-auto overscroll-contain px-4 sm:px-8 py-6 pb-40 max-w-3xl w-full mx-auto text-app-text-primary">
         <AttachmentCollage
           entry={{
             mood,
@@ -730,11 +732,16 @@ export const EntryEditorView: React.FC<EntryEditorViewProps> = ({
         onChange={handlePhotoSelect}
       />
 
-      {/* Floating Toolbar in Edit Mode (Positioned with visualViewport for iOS keyboard) */}
+      {/* Floating Toolbar in Edit Mode (Positioned above home bar or iOS keyboard) */}
       {isEditing && (
         <div
-          style={{ bottom: `${viewportBottomOffset + 12}px` }}
-          className="absolute left-1/2 -translate-x-1/2 z-40 transition-all duration-100"
+          style={{
+            bottom:
+              viewportBottomOffset > 10
+                ? `${viewportBottomOffset + 12}px`
+                : 'calc(1rem + env(safe-area-inset-bottom, 12px))',
+          }}
+          className="fixed sm:absolute left-1/2 -translate-x-1/2 z-50 transition-all duration-100"
         >
           <div className="flex items-center gap-1.5 p-1.5 rounded-full bg-app-card/95 backdrop-blur-2xl border border-app-card-border shadow-2xl text-app-text-primary">
             {/* Undo / Redo */}

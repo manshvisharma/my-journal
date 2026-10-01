@@ -18,8 +18,14 @@ export interface SearchFilters {
   pinnedOnly?: boolean;
   hasPhotos?: boolean;
   hasPhotosOnly?: boolean;
+  hasVideos?: boolean;
+  hasAudio?: boolean;
   hasMood?: boolean;
   hasSong?: boolean;
+  hasActivity?: boolean;
+  hasReflections?: boolean;
+  hasLocation?: boolean;
+  textOnly?: boolean;
   moodValence?: number; // 0..6
   dateRange?: { start?: number; end?: number };
   dateStart?: number;
@@ -187,11 +193,38 @@ class SearchEngine {
     if ((filters.hasPhotos || filters.hasPhotosOnly) && (!entry.media || entry.media.length === 0)) {
       return false;
     }
+    if (filters.hasVideos) {
+      const hasVideoTag = entry.tags?.some((t) => ['video', 'videos', 'clip', 'movie', 'recording'].includes(t.toLowerCase()));
+      if (!hasVideoTag) return false;
+    }
+    if (filters.hasAudio) {
+      const hasAudioSong = entry.songs?.some((s) => s.provider === 'other' || s.title?.toLowerCase().includes('audio') || s.title?.toLowerCase().includes('voice'));
+      const hasAudioTag = entry.tags?.some((t) => ['audio', 'voice', 'recording', 'podcast', 'memo'].includes(t.toLowerCase()));
+      if (!hasAudioSong && !hasAudioTag) return false;
+    }
     if (filters.hasMood && !entry.mood) {
       return false;
     }
     if (filters.hasSong && (!entry.songs || entry.songs.length === 0)) {
       return false;
+    }
+    if (filters.hasActivity) {
+      const hasActTag = entry.tags?.some((t) => ['activity', 'workout', 'run', 'walk', 'gym', 'fitness', 'cycling', 'yoga', 'exercise', 'steps'].includes(t.toLowerCase()));
+      if (!hasActTag) return false;
+    }
+    if (filters.hasReflections) {
+      const hasRefTag = entry.tags?.some((t) => ['reflection', 'reflections', 'prompt', 'gratitude', 'mindfulness', 'thought', 'thoughts'].includes(t.toLowerCase()));
+      const hasRefTitle = entry.title?.toLowerCase().includes('reflection') || entry.title?.toLowerCase().includes('prompt');
+      if (!hasRefTag && !hasRefTitle) return false;
+    }
+    if (filters.hasLocation && (!entry.location || !entry.location.name)) {
+      return false;
+    }
+    if (filters.textOnly) {
+      const hasAttachments = (entry.media && entry.media.length > 0) || (entry.songs && entry.songs.length > 0) || Boolean(entry.location?.name) || Boolean(entry.mood);
+      if (hasAttachments || !entry.plainText?.trim()) {
+        return false;
+      }
     }
     if (filters.moodValence !== undefined && entry.mood?.valence !== filters.moodValence) {
       return false;

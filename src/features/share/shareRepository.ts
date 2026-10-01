@@ -38,6 +38,25 @@ function tokenFor(shareId: string): string {
 
 type LocalShareRecord = { share: ShareDoc; media: ShareMediaDoc[]; visitors?: unknown[] };
 
+const shareListeners = new Set<() => void>();
+
+export function notifySharesChanged() {
+  shareListeners.forEach((cb) => {
+    try {
+      cb();
+    } catch {
+      // ignore
+    }
+  });
+}
+
+export function subscribeSharesChanged(cb: () => void): () => void {
+  shareListeners.add(cb);
+  return () => {
+    shareListeners.delete(cb);
+  };
+}
+
 function readLocalShares(): Record<string, LocalShareRecord> {
   if (typeof window === "undefined") return {};
   try {
@@ -163,6 +182,7 @@ export const shareRepository = {
     } catch (err) {
       console.warn("share upsert fell back to local cache", err);
     }
+    notifySharesChanged();
   },
 
   async setShareActive(shareId: string, active: boolean): Promise<void> {
@@ -173,6 +193,7 @@ export const shareRepository = {
     } catch (err) {
       console.warn("share active toggle used local cache", err);
     }
+    notifySharesChanged();
   },
 
   async updateShareDoc(shareId: string, updates: Partial<ShareDoc>): Promise<void> {
@@ -188,6 +209,7 @@ export const shareRepository = {
     } catch (err) {
       console.warn("share delete used local cache", err);
     }
+    notifySharesChanged();
   },
 
   async deactivateShareForEntry(ownerUid: string, entryId: string): Promise<void> {

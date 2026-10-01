@@ -18,7 +18,7 @@ import {
 import type { Entry, Folder } from "../../types";
 import type { ShareDoc } from "../../types/share";
 import { useAuthStore } from "../../store/useAuthStore";
-import { shareRepository } from "../share/shareRepository";
+import { shareRepository, subscribeSharesChanged } from "../share/shareRepository";
 import { renderFolderIcon } from "../../ui/IconPicker";
 import { Menu, type MenuItem } from "../../ui/Menu";
 import { CardMediaCollage } from "./CardMediaCollage";
@@ -32,6 +32,10 @@ interface EntryCardProps {
   isSelected?: boolean;
   isSelectMode?: boolean;
   isTrashView?: boolean;
+  isExpanded?: boolean;
+  onToggleExpand?: () => void;
+  isRevealed?: boolean;
+  onRevealedChange?: (revealed: boolean) => void;
   onSelectToggle?: (id: string) => void;
   onOpen?: (id: string) => void;
   onEdit: (entry: Entry) => void;
@@ -44,9 +48,9 @@ interface EntryCardProps {
   onOpenActivity?: (shareId: string) => void;
 }
 
-const BOOKMARK_THRESHOLD = 88;
-const DELETE_THRESHOLD = 120;
-const REVEAL_EDIT = 56;
+const FULL_BOOKMARK_THRESHOLD = 165;
+const FULL_DELETE_THRESHOLD = 185;
+const REVEAL_THRESHOLD = 36;
 
 export const EntryCard: React.FC<EntryCardProps> = React.memo(
   ({
@@ -55,6 +59,10 @@ export const EntryCard: React.FC<EntryCardProps> = React.memo(
     isSelected = false,
     isSelectMode = false,
     isTrashView = false,
+    isExpanded: isExpandedProp,
+    onToggleExpand: onToggleExpandProp,
+    isRevealed: isRevealedProp,
+    onRevealedChange,
     onSelectToggle,
     onEdit,
     onToggleBookmark,
@@ -67,7 +75,15 @@ export const EntryCard: React.FC<EntryCardProps> = React.memo(
   }) => {
     const user = useAuthStore((state) => state.user);
     const ownerUid = user?.uid || "demo-local-user";
-    const [isExpanded, setIsExpanded] = useState(false);
+    const [internalExpanded, setInternalExpanded] = useState(false);
+    const isExpanded = isExpandedProp !== undefined ? isExpandedProp : internalExpanded;
+    const toggleExpand = () => {
+      if (onToggleExpandProp) {
+        onToggleExpandProp();
+      } else {
+        setInternalExpanded((prev) => !prev);
+      }
+    };
     const [activePhotoViewerIndex, setActivePhotoViewerIndex] = useState<number | null>(null);
     const [showPeek, setShowPeek] = useState(false);
     const [activeShareDoc, setActiveShareDoc] = useState<ShareDoc | null>(null);
@@ -75,19 +91,33 @@ export const EntryCard: React.FC<EntryCardProps> = React.memo(
     const movedRef = useRef(false);
     const [revealed, setRevealed] = useState<"left" | "right" | null>(null);
     const draggedRef = useRef(false);
-    const crossedThresholdRef = useRef<"bookmark" | "delete" | "reveal" | null>(null);
+    const crossedThresholdRef = useRef<string | null>(null);
     const x = useMotionValue(0);
     const bookmarkOpacity = useTransform(x, [8, 70], [0, 1]);
     const rightOpacity = useTransform(x, [-8, -70], [0, 1]);
 
+    // Handle controlled snap-back if external revealed state changes to false
+    React.useEffect(() => {
+      if (isRevealedProp !== undefined && !isRevealedProp && revealed) {
+        setRevealed(null);
+        animate(x, 0, { type: "spring", stiffness: 420, damping: 36 });
+      }
+    }, [isRevealedProp, revealed, x]);
+
+    // Subscribe to share changes in real-time
     React.useEffect(() => {
       let mounted = true;
-      shareRepository.getShareByEntryId(ownerUid, entry.id).then((s) => {
-        if (!mounted) return;
-        setActiveShareDoc(s && s.active ? s : null);
-      });
+      const loadShare = () => {
+        shareRepository.getShareByEntryId(ownerUid, entry.id).then((s) => {
+          if (!mounted) return;
+          setActiveShareDoc(s && s.active ? s : null);
+        });
+      };
+      loadShare();
+      const unsub = subscribeSharesChanged(loadShare);
       return () => {
         mounted = false;
+        unsub();
       };
     }, [ownerUid, entry.id, entry.updatedAt]);
 
@@ -293,7 +323,7 @@ export const EntryCard: React.FC<EntryCardProps> = React.memo(
               onClick={(e) => {
                 e.stopPropagation();
                 haptics.selection();
-                setIsExpanded((prev) => !prev);
+                toggleExpand();
               }}
               className="p-1 text-app-text-tertiary"
               aria-label={isExpanded ? "Collapse" : "Expand"}
@@ -324,7 +354,8 @@ export const EntryCard: React.FC<EntryCardProps> = React.memo(
 
     return (
       <>
-        <div className="relative mb-3">
+        {/* Overflow-hidden prevents any swiping from extending the document width or creating horizontal scroll */}
+        <div className="relative mb-3 overflow-hidden rounded-[20px]">
           {/* Swipe action buttons - behind the card */}
           <div className="absolute inset-0 rounded-[20px] overflow-hidden pointer-events-none">
             <motion.div style={{ opacity: bookmarkOpacity }} className="absolute inset-y-0 left-3 flex items-center z-0 pointer-events-auto">
@@ -339,10 +370,11 @@ export const EntryCard: React.FC<EntryCardProps> = React.memo(
                   e.stopPropagation();
                   haptics.light();
                   setRevealed(null);
+                  onRevealedChange?.(false);
                   snapBack();
                   onEdit(entry);
                 }}
-                className="w-12 h-12 rounded-full bg-[#5B7CFA] text-white flex items-center justify-center shadow-lg"
+                className="w-12 h-12 rounded-full bg-[#5B7CFA] text-white flex items-center justify-center shadow-lg active:scale-90 transition"
                 aria-label="Edit"
               >
                 <Pencil className="w-5 h-5" />
@@ -353,10 +385,11 @@ export const EntryCard: React.FC<EntryCardProps> = React.memo(
                   e.stopPropagation();
                   haptics.warning();
                   setRevealed(null);
+                  onRevealedChange?.(false);
                   snapBack();
                   onDelete(entry.id);
                 }}
-                className="w-12 h-12 rounded-full bg-[#E11D48] text-white flex items-center justify-center shadow-lg"
+                className="w-12 h-12 rounded-full bg-[#E11D48] text-white flex items-center justify-center shadow-lg active:scale-90 transition"
                 aria-label="Delete"
               >
                 <Trash2 className="w-5 h-5" />
@@ -367,8 +400,9 @@ export const EntryCard: React.FC<EntryCardProps> = React.memo(
           <motion.div
             style={{ x }}
             drag={isSelectMode || isTrashView || showPeek ? false : "x"}
-            dragConstraints={{ left: -168, right: 120 }}
-            dragElastic={0.08}
+            dragConstraints={{ left: -220, right: 180 }}
+            dragElastic={0.12}
+            whileTap={showPeek ? undefined : { scale: 0.995 }}
             onPointerDown={startLongPress}
             onPointerMove={(e) => {
               if (Math.abs(e.movementX) + Math.abs(e.movementY) > 6) {
@@ -386,20 +420,25 @@ export const EntryCard: React.FC<EntryCardProps> = React.memo(
             }}
             onDrag={(_, info) => {
               const dx = info.offset.x;
-              if (dx > BOOKMARK_THRESHOLD) {
-                if (crossedThresholdRef.current !== "bookmark") {
-                  haptics.selection();
-                  crossedThresholdRef.current = "bookmark";
+              if (dx > FULL_BOOKMARK_THRESHOLD) {
+                if (crossedThresholdRef.current !== "bookmark-full") {
+                  haptics.medium();
+                  crossedThresholdRef.current = "bookmark-full";
                 }
-              } else if (dx < -DELETE_THRESHOLD) {
-                if (crossedThresholdRef.current !== "delete") {
-                  haptics.warning();
-                  crossedThresholdRef.current = "delete";
-                }
-              } else if (dx < -REVEAL_EDIT) {
-                if (crossedThresholdRef.current !== "reveal") {
+              } else if (dx > REVEAL_THRESHOLD) {
+                if (crossedThresholdRef.current !== "bookmark-reveal") {
                   haptics.light();
-                  crossedThresholdRef.current = "reveal";
+                  crossedThresholdRef.current = "bookmark-reveal";
+                }
+              } else if (dx < -FULL_DELETE_THRESHOLD) {
+                if (crossedThresholdRef.current !== "delete-full") {
+                  haptics.warning();
+                  crossedThresholdRef.current = "delete-full";
+                }
+              } else if (dx < -REVEAL_THRESHOLD) {
+                if (crossedThresholdRef.current !== "delete-reveal") {
+                  haptics.light();
+                  crossedThresholdRef.current = "delete-reveal";
                 }
               } else {
                 crossedThresholdRef.current = null;
@@ -408,32 +447,49 @@ export const EntryCard: React.FC<EntryCardProps> = React.memo(
             onDragEnd={(_, info) => {
               crossedThresholdRef.current = null;
               const dx = info.offset.x;
-              if (dx > BOOKMARK_THRESHOLD) {
+
+              // 1. Full swipe to bookmark
+              if (dx > FULL_BOOKMARK_THRESHOLD) {
                 haptics.success();
                 onToggleBookmark(entry.id);
                 toast.success(entry.bookmarked ? "Bookmark removed" : "Bookmarked");
                 setRevealed(null);
+                onRevealedChange?.(false);
                 snapBack();
                 return;
               }
-              if (dx > 36) {
+
+              // 2. Partial swipe right to reveal bookmark
+              if (dx > REVEAL_THRESHOLD) {
+                haptics.light();
                 setRevealed("left");
+                onRevealedChange?.(true);
                 animate(x, 88, { type: "spring", stiffness: 420, damping: 36 });
                 return;
               }
-              if (dx < -DELETE_THRESHOLD) {
+
+              // 3. Full swipe to delete
+              if (dx < -FULL_DELETE_THRESHOLD) {
                 haptics.warning();
                 setRevealed(null);
+                onRevealedChange?.(false);
                 snapBack();
                 onDelete(entry.id);
                 return;
               }
-              if (dx < -REVEAL_EDIT) {
+
+              // 4. Partial swipe left to reveal edit and delete
+              if (dx < -REVEAL_THRESHOLD) {
+                haptics.light();
                 setRevealed("right");
-                animate(x, -140, { type: "spring", stiffness: 420, damping: 36 });
+                onRevealedChange?.(true);
+                animate(x, -136, { type: "spring", stiffness: 420, damping: 36 });
                 return;
               }
+
+              // Reset if let go within center zone
               setRevealed(null);
+              onRevealedChange?.(false);
               snapBack();
             }}
             onClick={() => {
@@ -444,6 +500,7 @@ export const EntryCard: React.FC<EntryCardProps> = React.memo(
               }
               if (revealed) {
                 setRevealed(null);
+                onRevealedChange?.(false);
                 snapBack();
                 return;
               }
@@ -452,7 +509,7 @@ export const EntryCard: React.FC<EntryCardProps> = React.memo(
                 return;
               }
               haptics.light();
-              setIsExpanded((prev) => !prev);
+              toggleExpand();
             }}
             className="relative z-10 cursor-pointer select-none rounded-[20px] bg-app-bg"
           >

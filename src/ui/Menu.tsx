@@ -59,7 +59,7 @@ export const Menu: React.FC<MenuProps> = ({ trigger, items, headerContent, align
   }, [isOpen, computePosition]);
 
   useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent) => {
+    const handleOutsideClick = (e: Event) => {
       if (
         triggerRef.current &&
         !triggerRef.current.contains(e.target as Node) &&
@@ -70,21 +70,48 @@ export const Menu: React.FC<MenuProps> = ({ trigger, items, headerContent, align
       }
     };
     const handleScroll = () => {
-      if (isOpen) computePosition();
+      // Dismiss menu automatically when user starts scrolling the page
+      setIsOpen(false);
     };
+    const handlePointerMove = (e: PointerEvent) => {
+      if (e.pointerType === 'mouse' && menuRef.current && triggerRef.current) {
+        const menuRect = menuRef.current.getBoundingClientRect();
+        const triggerRect = triggerRef.current.getBoundingClientRect();
+        const mouseX = e.clientX;
+        const mouseY = e.clientY;
+        const distMenuX = Math.max(0, menuRect.left - mouseX, mouseX - menuRect.right);
+        const distMenuY = Math.max(0, menuRect.top - mouseY, mouseY - menuRect.bottom);
+        const distTriggerX = Math.max(0, triggerRect.left - mouseX, mouseX - triggerRect.right);
+        const distTriggerY = Math.max(0, triggerRect.top - mouseY, mouseY - triggerRect.bottom);
+        if (Math.hypot(distMenuX, distMenuY) > 80 && Math.hypot(distTriggerX, distTriggerY) > 80) {
+          setIsOpen(false);
+        }
+      }
+    };
+
     if (isOpen) {
       document.addEventListener('mousedown', handleOutsideClick);
-      window.addEventListener('scroll', handleScroll, true);
+      document.addEventListener('touchstart', handleOutsideClick, { passive: true });
+      window.addEventListener('scroll', handleScroll, { capture: true, passive: true });
+      window.addEventListener('pointermove', handlePointerMove, { passive: true });
     }
     return () => {
       document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('touchstart', handleOutsideClick);
       window.removeEventListener('scroll', handleScroll, true);
+      window.removeEventListener('pointermove', handlePointerMove);
     };
-  }, [isOpen, computePosition]);
+  }, [isOpen]);
 
   const menuPortal = isOpen
     ? createPortal(
         <AnimatePresence>
+          {/* Transparent dismiss backdrop */}
+          <div
+            className="fixed inset-0 z-[9998]"
+            onClick={() => setIsOpen(false)}
+            onTouchStart={() => setIsOpen(false)}
+          />
           <motion.div
             ref={menuRef}
             initial={{ opacity: 0, scale: 0.9, y: -6 }}

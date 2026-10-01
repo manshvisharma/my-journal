@@ -9,7 +9,9 @@
  */
 
 let iosSwitchLabel: HTMLLabelElement | null = null;
+let iosSwitchInput: HTMLInputElement | null = null;
 let isSwitchSetup = false;
+let audioCtx: AudioContext | null = null;
 
 function setupIosSwitchHaptic() {
   if (typeof window === 'undefined' || isSwitchSetup) return;
@@ -17,14 +19,13 @@ function setupIosSwitchHaptic() {
     const container = document.createElement('div');
     container.setAttribute('aria-hidden', 'true');
     container.style.position = 'fixed';
-    container.style.top = '-9999px';
-    container.style.left = '-9999px';
-    container.style.opacity = '0';
-    container.style.pointerEvents = 'none';
-    container.style.zIndex = '-1';
-    container.style.width = '0';
-    container.style.height = '0';
+    container.style.bottom = '0';
+    container.style.right = '0';
+    container.style.width = '1px';
+    container.style.height = '1px';
+    container.style.opacity = '0.001';
     container.style.overflow = 'hidden';
+    container.style.zIndex = '-9999';
 
     const input = document.createElement('input');
     input.type = 'checkbox';
@@ -37,15 +38,43 @@ function setupIosSwitchHaptic() {
     label.htmlFor = '__ios_haptic_switch__';
     label.style.width = '1px';
     label.style.height = '1px';
+    label.style.display = 'block';
 
     container.appendChild(input);
     container.appendChild(label);
     document.body.appendChild(container);
 
     iosSwitchLabel = label;
+    iosSwitchInput = input;
     isSwitchSetup = true;
   } catch {
     // Ignore DOM setup errors
+  }
+}
+
+function playMicroTick(duration = 0.006, freq = 90, gainValue = 0.06) {
+  try {
+    if (typeof window === 'undefined') return;
+    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextClass) return;
+    if (!audioCtx) {
+      audioCtx = new AudioContextClass();
+    }
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    gain.gain.setValueAtTime(gainValue, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + duration);
+  } catch {
+    // Ignore audio errors
   }
 }
 
@@ -70,20 +99,21 @@ function isHapticsEnabled(): boolean {
 function triggerSingleTick(): void {
   if (!isHapticsEnabled()) return;
 
-  // Try iOS switch trick first
+  // 1. Try iOS switch tick
   if (!isSwitchSetup) {
     setupIosSwitchHaptic();
   }
 
-  if (iosSwitchLabel) {
+  if (iosSwitchLabel && iosSwitchInput) {
     try {
+      iosSwitchInput.checked = !iosSwitchInput.checked;
       iosSwitchLabel.click();
     } catch {
       // ignore
     }
   }
 
-  // Android / Chrome navigator.vibrate fallback
+  // 2. Android / Chrome navigator.vibrate fallback
   try {
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
       navigator.vibrate(10);
@@ -91,6 +121,9 @@ function triggerSingleTick(): void {
   } catch {
     // ignore
   }
+
+  // 3. Subtle tactile sound/micro-tick for sensory feedback on iOS
+  playMicroTick();
 }
 
 export const haptics = {

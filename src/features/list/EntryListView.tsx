@@ -32,6 +32,7 @@ import { OrganiseUnsortedModal } from './OrganiseUnsortedModal';
 import { ChooseJournalsModal } from '../folders/ChooseJournalsModal';
 import { ShareSheet } from '../share/ShareSheet';
 import { LinkActivityModal } from '../share/LinkActivityModal';
+import { InsightsSheet } from '../insights/InsightsSheet';
 import { Menu, type MenuItem } from '../../ui/Menu';
 import { ConfirmSheet } from '../../ui/ConfirmSheet';
 import { toast } from '../../ui/Toast';
@@ -67,6 +68,11 @@ export const EntryListView: React.FC<EntryListViewProps> = ({
   }, [folders]);
 
   const stats = useStats();
+
+  // Single-expanded and single-revealed entry state
+  const [expandedEntryId, setExpandedEntryId] = useState<string | null>(null);
+  const [revealedEntryId, setRevealedEntryId] = useState<string | null>(null);
+  const [showInsightsSheet, setShowInsightsSheet] = useState(false);
 
   // Zustand Store hooks & actions
   const isSelectMode = useJournalStore((state) => state.isSelectMode);
@@ -421,58 +427,67 @@ export const EntryListView: React.FC<EntryListViewProps> = ({
             {viewTitle}
           </h1>
 
-          {/* Subheader 3-Pill Stats Row (Matching Screenshot 1) */}
-          {isMainView && (
-            <div className="flex items-center gap-4 text-[13px] text-app-text-secondary mt-2 pb-1 overflow-x-auto scrollbar-none">
-              <div className="flex items-center gap-1.5 shrink-0">
-                <span className="text-orange-500 font-bold">🔥</span>
-                <span className="font-bold text-app-text-primary">{stats.currentStreak}</span>
-                <span className="text-app-text-secondary">Day Streak</span>
-              </div>
-
-              <div className="w-px h-3.5 bg-app-hairline shrink-0" />
-
-              <div className="flex items-center gap-1.5 shrink-0">
-                <span className="text-rose-500 font-bold text-[14px]">❝</span>
-                <span className="font-bold text-app-text-primary">
-                  {stats.wordsAllTime.toLocaleString()}
+          {/* Apple-style 3-Column Stats Row across all views (Tapping opens InsightsSheet) */}
+          <button
+            type="button"
+            onClick={() => {
+              haptics.light();
+              setShowInsightsSheet(true);
+            }}
+            className="w-full text-left mt-2.5 p-2 sm:p-2.5 rounded-2xl bg-app-card/60 hover:bg-app-card border border-app-card-border/80 transition-all active:scale-[0.99] group cursor-pointer"
+            title="View Insights"
+          >
+            <div className="grid grid-cols-3 divide-x divide-app-hairline">
+              {/* Day Streak */}
+              <div className="flex flex-col items-center justify-center px-1 text-center">
+                <div className="flex items-center gap-1">
+                  <span className="text-orange-500 text-[15px]">🔥</span>
+                  <span className="text-[17px] font-bold text-app-text-primary leading-tight">
+                    {stats.currentStreak}
+                  </span>
+                </div>
+                <span className="text-[11px] font-medium text-app-text-tertiary leading-tight mt-0.5">
+                  Day Streak
                 </span>
-                <span className="text-app-text-secondary">Words Written</span>
               </div>
 
-              <div className="w-px h-3.5 bg-app-hairline shrink-0" />
+              {/* Words Written */}
+              <div className="flex flex-col items-center justify-center px-1 text-center">
+                <div className="flex items-center gap-1">
+                  <span className="text-rose-500 text-[15px] font-serif">❝</span>
+                  <span className="text-[17px] font-bold text-app-text-primary leading-tight">
+                    {stats.wordsAllTime > 9999 ? `${(stats.wordsAllTime / 1000).toFixed(1)}k` : stats.wordsAllTime.toLocaleString()}
+                  </span>
+                </div>
+                <span className="text-[11px] font-medium text-app-text-tertiary leading-tight mt-0.5">
+                  Words Written
+                </span>
+              </div>
 
-              <div className="flex items-center gap-1.5 shrink-0">
-                <span className="text-indigo-500 font-bold">📅</span>
-                <span className="font-bold text-app-text-primary">{stats.daysJournaledAllTime}</span>
-                <span className="text-app-text-secondary">Days Journaled</span>
+              {/* Days Journaled */}
+              <div className="flex flex-col items-center justify-center px-1 text-center">
+                <div className="flex items-center gap-1">
+                  <span className="text-indigo-500 text-[15px]">📅</span>
+                  <span className="text-[17px] font-bold text-app-text-primary leading-tight">
+                    {stats.daysJournaledAllTime}
+                  </span>
+                </div>
+                <span className="text-[11px] font-medium text-app-text-tertiary leading-tight mt-0.5">
+                  Days Journaled
+                </span>
               </div>
             </div>
-          )}
-
-          {/* Folder subheader stats: stacked on mobile for compactness */}
-          {!isMainView && (
-            <div className="flex items-center gap-3 mt-1">
-              <div className="flex sm:flex-row flex-col sm:items-center items-start sm:gap-1.5 gap-0">
-                <span className="font-bold text-[15px] sm:text-[13px] text-app-text-primary">{entries.length}</span>
-                <span className="text-[13px] text-app-text-secondary leading-none">{entries.length === 1 ? 'entry' : 'entries'}</span>
-              </div>
-              {folderId && stats.currentStreak > 0 && (
-                <>
-                  <div className="w-px h-3.5 bg-app-hairline" />
-                  <div className="flex sm:flex-row flex-col sm:items-center items-start sm:gap-1.5 gap-0">
-                    <span className="text-orange-500 font-bold text-[15px] sm:text-[13px] leading-none">🔥{stats.currentStreak}</span>
-                    <span className="text-[13px] text-app-text-secondary leading-none">streak</span>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
+          </button>
         </div>
       </header>
 
       {/* Main List Container */}
-      <main className="flex-1 overflow-y-auto overscroll-contain px-4 sm:px-5 pb-28 max-w-2xl w-full mx-auto space-y-6">
+      <main
+        onScroll={() => {
+          if (revealedEntryId) setRevealedEntryId(null);
+        }}
+        className="flex-1 overflow-y-auto overscroll-contain overflow-x-hidden px-4 sm:px-5 pb-28 max-w-2xl w-full mx-auto space-y-6"
+      >
         {/* Unsorted View "Organise" Banner */}
         {smartView === 'unsorted' && entries.length > 0 && (
           <div className="p-4 rounded-[18px] bg-app-accent-tint border border-app-accent/20 flex items-center justify-between">
@@ -561,6 +576,14 @@ export const EntryListView: React.FC<EntryListViewProps> = ({
                   isSelected={selectedEntryIds.has(entry.id)}
                   isSelectMode={isSelectMode}
                   isTrashView={isTrash}
+                  isExpanded={expandedEntryId === entry.id}
+                  onToggleExpand={() =>
+                    setExpandedEntryId((prev) => (prev === entry.id ? null : entry.id))
+                  }
+                  isRevealed={revealedEntryId === entry.id}
+                  onRevealedChange={(isRev) =>
+                    setRevealedEntryId(isRev ? entry.id : null)
+                  }
                   onSelectToggle={toggleSelectEntry}
                   onEdit={(e) => onOpenEntry(e.id)}
                   onToggleBookmark={toggleBookmark}
@@ -716,6 +739,12 @@ export const EntryListView: React.FC<EntryListViewProps> = ({
         isDestructive={confirmConfig.isDestructive}
         onConfirm={confirmConfig.onConfirm}
         onCancel={() => setConfirmConfig((prev) => ({ ...prev, isOpen: false }))}
+      />
+
+      {/* Apple-style Insights Bottom Sheet */}
+      <InsightsSheet
+        isOpen={showInsightsSheet}
+        onClose={() => setShowInsightsSheet(false)}
       />
     </div>
   );
