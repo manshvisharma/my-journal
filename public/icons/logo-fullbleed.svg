@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4A3FD6"/><stop offset="0.55" stop-color="#6B47E8"/><stop offset="1" stop-color="#9A4FE0"/></linearGradient>
+    <radialGradient id="glow" cx="0.22" cy="0.15" r="0.75"><stop offset="0" stop-color="#FFFFFF" stop-opacity="0.26"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/></radialGradient>
+    <linearGradient id="moon" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4F46E5"/><stop offset="1" stop-color="#7C3AED"/></linearGradient>
+    <linearGradient id="ribbon" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FF9BAE"/><stop offset="1" stop-color="#FF5C7C"/></linearGradient>
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="14"/></filter>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <rect width="512" height="512" fill="url(#glow)"/>
+  <rect x="156" y="128" width="200" height="288" rx="30" fill="#1E1160" opacity="0.38" filter="url(#soft)"/>
+  <rect x="156" y="112" width="200" height="288" rx="30" fill="#FBFAFF"/>
+  <circle cx="232" cy="262" r="66" fill="url(#moon)"/>
+  <circle cx="264" cy="242" r="56" fill="#FBFAFF"/>
+  <path d="M292 262 C294 274 298 278 310 280 C298 282 294 286 292 298 C290 286 286 282 274 280 C286 278 290 274 292 262 Z" fill="#7C3AED"/>
+  <rect x="190" y="342" width="132" height="12" rx="6" fill="#DAD5F8"/>
+  <rect x="190" y="366" width="84" height="12" rx="6" fill="#E7E3FB"/>
+  <path d="M300 92 H344 V206 L322 186 L300 206 Z" fill="url(#ribbon)"/>
+</svg>
