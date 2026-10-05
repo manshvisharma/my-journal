@@ -1,23 +1,38 @@
 import type { Entry, Folder, MediaDoc, SyncStatus, UserSettings } from "../types";
 import type { DataStore, DocChange, Unsubscribe } from "./types";
+import { isFirebaseConfigured, db } from "./firebase";
+import { FirestoreStore } from "./FirestoreStore";
 import { LocalStore } from "./LocalStore";
 
 class Repository {
   private localStore: LocalStore;
+  private firestoreStore: FirestoreStore | null = null;
 
   constructor() {
     this.localStore = new LocalStore();
+    if (isFirebaseConfigured() && db) {
+      this.firestoreStore = new FirestoreStore(db);
+    }
   }
 
-  private getStore(_uid: string): DataStore {
+  private getStore(uid?: string): DataStore {
+    if (!this.firestoreStore && isFirebaseConfigured() && db) {
+      this.firestoreStore = new FirestoreStore(db);
+    }
+    if (this.firestoreStore && uid && uid !== "demo-local-user") {
+      return this.firestoreStore;
+    }
     return this.localStore;
   }
 
   public get isDemo(): boolean {
-    return true;
+    return !this.firestoreStore;
   }
 
   public getSyncStatus(): SyncStatus {
+    if (this.firestoreStore) {
+      return this.firestoreStore.getSyncStatus();
+    }
     return "synced";
   }
 
@@ -85,23 +100,16 @@ class Repository {
     return this.getStore(uid).saveSettings(uid, settings);
   }
 
-  private get currentUid(): string {
-    return "demo-local-user";
-  }
-
   public async saveMedia(mediaDoc: MediaDoc, uid?: string): Promise<void> {
-    const targetUid = uid || this.currentUid;
-    return this.getStore(targetUid).saveMedia(targetUid, mediaDoc);
+    return this.getStore(uid).saveMedia(uid || "demo-local-user", mediaDoc);
   }
 
   public async getMedia(mediaId: string, uid?: string): Promise<MediaDoc | null> {
-    const targetUid = uid || this.currentUid;
-    return this.getStore(targetUid).getMedia(targetUid, mediaId);
+    return this.getStore(uid).getMedia(uid || "demo-local-user", mediaId);
   }
 
   public async deleteMedia(mediaId: string, uid?: string): Promise<void> {
-    const targetUid = uid || this.currentUid;
-    return this.getStore(targetUid).deleteMedia(targetUid, mediaId);
+    return this.getStore(uid).deleteMedia(uid || "demo-local-user", mediaId);
   }
 
   public async verifyCloudCopy(
