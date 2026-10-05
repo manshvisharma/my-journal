@@ -1,0 +1,90 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: Verify that the requester is the authenticated owner of the document
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    // Helper: Check if a shared entry link is currently active and not expired
+    function isShareActive(shareId) {
+      let shareDoc = /databases/$(database)/documents/shares/$(shareId);
+      return exists(shareDoc)
+        && get(shareDoc).data.active == true
+        && (get(shareDoc).data.expiresAt == null || request.time.toMillis() < get(shareDoc).data.expiresAt);
+    }
+
+    // ===============================================================
+    // 1. User Private Data (Entries, Folders, Settings, Media)
+    // ===============================================================
+    match /users/{uid}/{document=**} {
+      // Each user can read, create, update, and delete ONLY their own documents
+      allow read, write: if isOwner(uid);
+    }
+
+    // ===============================================================
+    // 2. Shared Entries (Public Web Previews & Owner Management)
+    // ===============================================================
+    match /shares/{shareId} {
+      // Anyone with the link can view if active and unexpired; owners can always view
+      allow get: if (resource.data.active == true && (resource.data.expiresAt == null || request.time.toMillis() < resource.data.expiresAt))
+                 || (request.auth != null && resource.data.ownerUid == request.auth.uid);
+
+      // Listing shares: allowed only for the author
+      allow list: if request.auth != null && request.auth.uid == resource.data.ownerUid;
+
+      // Create by the entry owner
+      allow create: if request.auth != null && request.resource.data.ownerUid == request.auth.uid;
+
+      // Update by the owner, or increment view count by public viewers
+      allow update: if (request.auth != null && resource.data.ownerUid == request.auth.uid)
+                    || (
+                      resource.data.active == true
+                      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewsTotal', 'updatedAt'])
+                      && request.resource.data.viewsTotal <= resource.data.viewsTotal + 1
+                    );
+
+      // Delete by owner
+      allow delete: if request.auth != null && resource.data.ownerUid == request.auth.uid;
+
+      // Subcollection: Shared Photos & Media Attachments
+      match /media/{mediaId} {
+        allow get, list: if isShareActive(shareId)
+                         || (request.auth != null && get(/databases/$(database)/documents/shares/$(shareId)).data.ownerUid == request.auth.uid);
+        allow create, update, delete: if request.auth != null && get(/databases/$(database)/documents/shares/$(shareId)).data.ownerUid == request.auth.uid;
+      }
+
+      // Subcollection: Share Visitors & Analytics
+      match /visitors/{visitorId} {
+        allow get: if (request.auth != null && request.auth.uid == visitorId)
+                   || (request.auth != null && get(/databases/$(database)/documents/shares/$(shareId)).data.ownerUid == request.auth.uid);
+        allow list: if request.auth != null && get(/databases/$(database)/documents/shares/$(shareId)).data.ownerUid == request.auth.uid;
+
+        allow create: if isShareActive(shareId)
+                      && request.resource.data.keys().hasOnly([
+                        'visitorId', 'opens', 'totalSeconds', 'firstOpenedAt',
+                        'lastOpenedAt', 'maxScrollPct', 'device', 'os',
+                        'browser', 'screen', 'tz', 'lang', 'country', 'city',
+                        'referrer', 'label'
+                      ]);
+
+        allow update: if isShareActive(shareId);
+        allow delete: if request.auth != null && get(/databases/$(database)/documents/shares/$(shareId)).data.ownerUid == request.auth.uid;
+      }
+
+      // Subcollection: Share Reading Sessions
+      match /sessions/{sessionId} {
+        allow get, list: if request.auth != null && get(/databases/$(database)/documents/shares/$(shareId)).data.ownerUid == request.auth.uid;
+        allow create: if isShareActive(shareId);
+        allow update: if isShareActive(shareId);
+        allow delete: if request.auth != null && get(/databases/$(database)/documents/shares/$(shareId)).data.ownerUid == request.auth.uid;
+      }
+    }
+
+    // Default: Deny everything else
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
