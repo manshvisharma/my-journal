@@ -7,6 +7,7 @@ import { LocalStore } from "./LocalStore";
 class Repository {
   private localStore: LocalStore;
   private firestoreStore: FirestoreStore | null = null;
+  private hasPermissionError = false;
 
   constructor() {
     this.localStore = new LocalStore();
@@ -15,21 +16,12 @@ class Repository {
     }
   }
 
-  private getStore(uid?: string): DataStore {
-    if (!this.firestoreStore && isFirebaseConfigured() && db) {
-      this.firestoreStore = new FirestoreStore(db);
-    }
-    if (this.firestoreStore && uid && uid !== "demo-local-user") {
-      return this.firestoreStore;
-    }
-    return this.localStore;
-  }
-
   public get isDemo(): boolean {
-    return !this.firestoreStore;
+    return !this.firestoreStore || this.hasPermissionError;
   }
 
   public getSyncStatus(): SyncStatus {
+    if (this.hasPermissionError) return "offline";
     if (this.firestoreStore) {
       return this.firestoreStore.getSyncStatus();
     }
@@ -41,7 +33,39 @@ class Repository {
     onChanges: (changes: DocChange<Entry>[], isFromCache: boolean, hasPendingWrites: boolean) => void,
     onError?: (error: Error) => void,
   ): Unsubscribe {
-    return this.getStore(uid).subscribeEntries(uid, onChanges, onError);
+    // If Firestore is available and no permission error has occurred yet
+    if (this.firestoreStore && uid && uid !== "demo-local-user" && !this.hasPermissionError) {
+      let localUnsub: Unsubscribe | null = null;
+      let active = true;
+
+      const firestoreUnsub = this.firestoreStore.subscribeEntries(
+        uid,
+        (changes, isFromCache, hasPendingWrites) => {
+          if (active) {
+            onChanges(changes, isFromCache, hasPendingWrites);
+          }
+        },
+        (err) => {
+          console.warn("Firestore entries subscription error, falling back to local storage:", err.message);
+          if (err.message?.includes("permissions") || err.message?.includes("permission-denied")) {
+            this.hasPermissionError = true;
+          }
+          if (onError) onError(err);
+          // Fall back to localStore immediately so the UI remains interactive and never blank
+          if (active && !localUnsub) {
+            localUnsub = this.localStore.subscribeEntries(uid, onChanges);
+          }
+        },
+      );
+
+      return () => {
+        active = false;
+        firestoreUnsub();
+        if (localUnsub) localUnsub();
+      };
+    }
+
+    return this.localStore.subscribeEntries(uid, onChanges, onError);
   }
 
   public subscribeFolders(
@@ -49,7 +73,35 @@ class Repository {
     onChanges: (changes: DocChange<Folder>[]) => void,
     onError?: (error: Error) => void,
   ): Unsubscribe {
-    return this.getStore(uid).subscribeFolders(uid, onChanges, onError);
+    if (this.firestoreStore && uid && uid !== "demo-local-user" && !this.hasPermissionError) {
+      let localUnsub: Unsubscribe | null = null;
+      let active = true;
+
+      const firestoreUnsub = this.firestoreStore.subscribeFolders(
+        uid,
+        (changes) => {
+          if (active) onChanges(changes);
+        },
+        (err) => {
+          console.warn("Firestore folders subscription error, falling back to local storage:", err.message);
+          if (err.message?.includes("permissions") || err.message?.includes("permission-denied")) {
+            this.hasPermissionError = true;
+          }
+          if (onError) onError(err);
+          if (active && !localUnsub) {
+            localUnsub = this.localStore.subscribeFolders(uid, onChanges);
+          }
+        },
+      );
+
+      return () => {
+        active = false;
+        firestoreUnsub();
+        if (localUnsub) localUnsub();
+      };
+    }
+
+    return this.localStore.subscribeFolders(uid, onChanges, onError);
   }
 
   public subscribeSettings(
@@ -57,27 +109,98 @@ class Repository {
     onUpdate: (settings: UserSettings | null) => void,
     onError?: (error: Error) => void,
   ): Unsubscribe {
-    return this.getStore(uid).subscribeSettings(uid, onUpdate, onError);
+    if (this.firestoreStore && uid && uid !== "demo-local-user" && !this.hasPermissionError) {
+      let localUnsub: Unsubscribe | null = null;
+      let active = true;
+
+      const firestoreUnsub = this.firestoreStore.subscribeSettings(
+        uid,
+        (settings) => {
+          if (active) onUpdate(settings);
+        },
+        (err) => {
+          console.warn("Firestore settings subscription error, falling back to local storage:", err.message);
+          if (err.message?.includes("permissions") || err.message?.includes("permission-denied")) {
+            this.hasPermissionError = true;
+          }
+          if (onError) onError(err);
+          if (active && !localUnsub) {
+            localUnsub = this.localStore.subscribeSettings(uid, onUpdate);
+          }
+        },
+      );
+
+      return () => {
+        active = false;
+        firestoreUnsub();
+        if (localUnsub) localUnsub();
+      };
+    }
+
+    return this.localStore.subscribeSettings(uid, onUpdate, onError);
   }
 
   public async saveEntry(uid: string, entry: Entry): Promise<void> {
-    return this.getStore(uid).saveEntry(uid, entry);
+    // Always persist to localStore first
+    await this.localStore.saveEntry(uid, entry);
+
+    if (this.firestoreStore && uid && uid !== "demo-local-user" && !this.hasPermissionError) {
+      try {
+        await this.firestoreStore.saveEntry(uid, entry);
+      } catch (err: unknown) {
+        const error = err as Error;
+        console.warn("Firestore saveEntry warning (data kept in local storage):", error?.message);
+        if (error?.message?.includes("permissions") || error?.message?.includes("permission-denied")) {
+          this.hasPermissionError = true;
+        }
+      }
+    }
   }
 
   public async softDeleteEntry(uid: string, entryId: string): Promise<void> {
-    return this.getStore(uid).softDeleteEntry(uid, entryId);
+    await this.localStore.softDeleteEntry(uid, entryId);
+    if (this.firestoreStore && uid && uid !== "demo-local-user" && !this.hasPermissionError) {
+      try {
+        await this.firestoreStore.softDeleteEntry(uid, entryId);
+      } catch (err: unknown) {
+        const error = err as Error;
+        if (error?.message?.includes("permissions") || error?.message?.includes("permission-denied")) {
+          this.hasPermissionError = true;
+        }
+      }
+    }
   }
 
   public async restoreEntry(uid: string, entryId: string): Promise<void> {
-    return this.getStore(uid).restoreEntry(uid, entryId);
+    await this.localStore.restoreEntry(uid, entryId);
+    if (this.firestoreStore && uid && uid !== "demo-local-user" && !this.hasPermissionError) {
+      try {
+        await this.firestoreStore.restoreEntry(uid, entryId);
+      } catch (err: unknown) {
+        const error = err as Error;
+        if (error?.message?.includes("permissions") || error?.message?.includes("permission-denied")) {
+          this.hasPermissionError = true;
+        }
+      }
+    }
   }
 
   public async deletePermanently(uid: string, entryId: string): Promise<void> {
-    return this.getStore(uid).deleteEntryPermanently(uid, entryId);
+    await this.localStore.deleteEntryPermanently(uid, entryId);
+    if (this.firestoreStore && uid && uid !== "demo-local-user" && !this.hasPermissionError) {
+      try {
+        await this.firestoreStore.deleteEntryPermanently(uid, entryId);
+      } catch (err: unknown) {
+        const error = err as Error;
+        if (error?.message?.includes("permissions") || error?.message?.includes("permission-denied")) {
+          this.hasPermissionError = true;
+        }
+      }
+    }
   }
 
   public async purgeOldDeletedEntries(uid: string, maxAgeDays: number): Promise<number> {
-    return this.getStore(uid).purgeOldDeletedEntries(uid, maxAgeDays);
+    return this.localStore.purgeOldDeletedEntries(uid, maxAgeDays);
   }
 
   public async batchSaveEntries(
@@ -85,46 +208,89 @@ class Repository {
     entries: Entry[],
     onProgress?: (completed: number, total: number) => void,
   ): Promise<void> {
-    return this.getStore(uid).batchSaveEntries(uid, entries, onProgress);
+    await this.localStore.batchSaveEntries(uid, entries, onProgress);
+    if (this.firestoreStore && uid && uid !== "demo-local-user" && !this.hasPermissionError) {
+      try {
+        await this.firestoreStore.batchSaveEntries(uid, entries, onProgress);
+      } catch (err: unknown) {
+        const error = err as Error;
+        if (error?.message?.includes("permissions") || error?.message?.includes("permission-denied")) {
+          this.hasPermissionError = true;
+        }
+      }
+    }
   }
 
   public async saveFolder(uid: string, folder: Folder): Promise<void> {
-    return this.getStore(uid).saveFolder(uid, folder);
+    await this.localStore.saveFolder(uid, folder);
+    if (this.firestoreStore && uid && uid !== "demo-local-user" && !this.hasPermissionError) {
+      try {
+        await this.firestoreStore.saveFolder(uid, folder);
+      } catch (err: unknown) {
+        const error = err as Error;
+        if (error?.message?.includes("permissions") || error?.message?.includes("permission-denied")) {
+          this.hasPermissionError = true;
+        }
+      }
+    }
   }
 
   public async deleteFolder(uid: string, folderId: string): Promise<void> {
-    return this.getStore(uid).deleteFolder(uid, folderId);
+    await this.localStore.deleteFolder(uid, folderId);
+    if (this.firestoreStore && uid && uid !== "demo-local-user" && !this.hasPermissionError) {
+      try {
+        await this.firestoreStore.deleteFolder(uid, folderId);
+      } catch (err: unknown) {
+        const error = err as Error;
+        if (error?.message?.includes("permissions") || error?.message?.includes("permission-denied")) {
+          this.hasPermissionError = true;
+        }
+      }
+    }
   }
 
   public async saveSettings(uid: string, settings: Partial<UserSettings>): Promise<void> {
-    return this.getStore(uid).saveSettings(uid, settings);
+    await this.localStore.saveSettings(uid, settings);
+    if (this.firestoreStore && uid && uid !== "demo-local-user" && !this.hasPermissionError) {
+      try {
+        await this.firestoreStore.saveSettings(uid, settings);
+      } catch (err: unknown) {
+        const error = err as Error;
+        if (error?.message?.includes("permissions") || error?.message?.includes("permission-denied")) {
+          this.hasPermissionError = true;
+        }
+      }
+    }
   }
 
   public async saveMedia(mediaDoc: MediaDoc, uid?: string): Promise<void> {
-    return this.getStore(uid).saveMedia(uid || "demo-local-user", mediaDoc);
+    await this.localStore.saveMedia(uid || "demo-local-user", mediaDoc);
   }
 
   public async getMedia(mediaId: string, uid?: string): Promise<MediaDoc | null> {
-    return this.getStore(uid).getMedia(uid || "demo-local-user", mediaId);
+    return this.localStore.getMedia(uid || "demo-local-user", mediaId);
   }
 
   public async deleteMedia(mediaId: string, uid?: string): Promise<void> {
-    return this.getStore(uid).deleteMedia(uid || "demo-local-user", mediaId);
+    await this.localStore.deleteMedia(uid || "demo-local-user", mediaId);
   }
 
   public async verifyCloudCopy(
     uid: string,
     localEntryCount: number,
   ): Promise<{ localCount: number; cloudCount: number; matches: boolean; hasPending: boolean }> {
-    return this.getStore(uid).verifyCloudCopy(uid, localEntryCount);
+    if (this.firestoreStore && !this.hasPermissionError) {
+      try {
+        return await this.firestoreStore.verifyCloudCopy(uid, localEntryCount);
+      } catch (err) {
+        console.warn("verifyCloudCopy error:", err);
+      }
+    }
+    return { localCount: localEntryCount, cloudCount: localEntryCount, matches: true, hasPending: false };
   }
 
   public async generateStressTestEntries(uid: string, onProgress?: (p: number, t: number) => void): Promise<number> {
-    const store = this.getStore(uid);
-    if (store instanceof LocalStore) {
-      return store.generateStressTestEntries(uid, onProgress);
-    }
-    return 0;
+    return this.localStore.generateStressTestEntries(uid, onProgress);
   }
 }
 

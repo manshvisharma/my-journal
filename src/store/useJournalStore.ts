@@ -106,7 +106,7 @@ export const useJournalStore = create<JournalState>((set, get) => ({
       },
       (err) => {
         console.error('Entries subscription error:', err);
-        set({ syncStatus: 'error' });
+        set({ syncStatus: 'error', isLoaded: true });
       }
     );
 
@@ -153,8 +153,27 @@ export const useJournalStore = create<JournalState>((set, get) => ({
   },
 
   saveEntry: async (entry: Entry) => {
+    // 1. Optimistically update local entries map so UI reflects changes immediately
+    const nextEntries = new Map(get().entries);
+    nextEntries.set(entry.id, entry);
+    set({ entries: nextEntries });
+
+    if (!entry.deletedAt) {
+      const folderNames = (entry.folderIds || [])
+        .map((fId) => get().folders.get(fId)?.name || '')
+        .filter(Boolean)
+        .join(' ');
+      searchEngine.indexEntry(entry, folderNames);
+    } else {
+      searchEngine.removeEntry(entry.id);
+    }
+
     const uid = get().activeUid || 'demo-local-user';
-    await repository.saveEntry(uid, entry);
+    try {
+      await repository.saveEntry(uid, entry);
+    } catch (err) {
+      console.warn('Repository saveEntry error:', err);
+    }
 
     // Auto-update shared copy if link is active
     shareRepository.getShareByEntryId(uid, entry.id).then((share) => {

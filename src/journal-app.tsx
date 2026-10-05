@@ -107,7 +107,7 @@ export default function JournalApp() {
     setIsNewEntryMode(false);
   };
 
-  const handleNewEntry = () => {
+  const handleNewEntry = async () => {
     if (!user) {
       haptics.warning();
       toast.info("Please sign in or create an account to start journaling");
@@ -144,7 +144,7 @@ export default function JournalApp() {
       importKey: null,
       schemaVersion: 1,
     };
-    useJournalStore.getState().saveEntry(newDraft);
+    await useJournalStore.getState().saveEntry(newDraft);
     setActiveEntryId(newId);
     setIsNewEntryMode(true);
     setScreen("editor");
@@ -282,6 +282,11 @@ export default function JournalApp() {
                   initialEditMode={isNewEntryMode}
                   onBack={handleBackFromEditor}
                 />
+              ) : screen === "editor" ? (
+                <div className="flex flex-col items-center justify-center w-full h-full text-app-text-tertiary p-8">
+                  <div className="h-8 w-8 animate-spin rounded-full border-2 border-app-accent border-t-transparent mb-3" />
+                  <p className="text-sm font-medium text-app-text-secondary">Opening entry...</p>
+                </div>
               ) : (
                 <div className="hidden lg:flex flex-col items-center justify-center w-full h-full text-app-text-tertiary p-8">
                   <p className="text-base font-semibold text-app-text-secondary mb-1">Select an entry</p>
