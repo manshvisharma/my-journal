@@ -159,6 +159,14 @@
   color: var(--color-text-primary);
 }
 
+.tiptap ::selection,
+.tiptap *::selection,
+.ProseMirror ::selection,
+.ProseMirror *::selection {
+  background-color: rgba(112, 102, 242, 0.35) !important;
+  color: inherit !important;
+}
+
 .tiptap p.is-editor-empty:first-child::before {
   color: var(--color-text-tertiary);
   content: attr(data-placeholder);

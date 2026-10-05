@@ -194,7 +194,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </div>
 
         {/* Child Subfolders (one level of nesting) */}
-        {hasChildren && (isExpanded || true) && (
+        {hasChildren && isExpanded && (
           <div className="border-t border-app-hairline">
             {node.children.map((child, idx) => (
               <React.Fragment key={child.id}>

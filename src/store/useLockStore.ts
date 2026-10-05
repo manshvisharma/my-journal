@@ -4,6 +4,7 @@ interface LockState {
   isLocked: boolean;
   hasPin: boolean;
   pinHash: string | null;
+  pinLength: number;
   salt: string | null;
   lockTimeoutMinutes: number; // 0 (immediately), 1, 5, 15
   isPrivacyCoverVisible: boolean;
@@ -20,6 +21,7 @@ interface LockState {
 
 const STORAGE_KEYS = {
   PIN_HASH: 'reverie_lock_pin_hash',
+  PIN_LENGTH: 'reverie_lock_pin_length',
   SALT: 'reverie_lock_salt',
   TIMEOUT: 'reverie_lock_timeout',
   LAST_ACTIVE: 'reverie_lock_last_active',
@@ -58,6 +60,7 @@ export const useLockStore = create<LockState>((set, get) => ({
   isLocked: false,
   hasPin: false,
   pinHash: null,
+  pinLength: 4,
   salt: null,
   lockTimeoutMinutes: 5,
   isPrivacyCoverVisible: false,
@@ -68,11 +71,14 @@ export const useLockStore = create<LockState>((set, get) => ({
       const salt = localStorage.getItem(STORAGE_KEYS.SALT);
       const timeoutStr = localStorage.getItem(STORAGE_KEYS.TIMEOUT);
       const timeout = timeoutStr ? parseInt(timeoutStr, 10) : 5;
+      const lengthStr = localStorage.getItem(STORAGE_KEYS.PIN_LENGTH);
+      const pinLength = lengthStr ? parseInt(lengthStr, 10) : 4;
 
       const hasPin = Boolean(pinHash && salt);
       set({
         hasPin,
         pinHash,
+        pinLength,
         salt,
         lockTimeoutMinutes: timeout,
         isLocked: hasPin, // Lock on launch if PIN is configured
@@ -107,13 +113,15 @@ export const useLockStore = create<LockState>((set, get) => ({
     const pinHash = await hashPinWithPBKDF2(pin, salt);
     localStorage.setItem(STORAGE_KEYS.PIN_HASH, pinHash);
     localStorage.setItem(STORAGE_KEYS.SALT, salt);
-    set({ hasPin: true, pinHash, salt, isLocked: false });
+    localStorage.setItem(STORAGE_KEYS.PIN_LENGTH, pin.length.toString());
+    set({ hasPin: true, pinHash, salt, pinLength: pin.length, isLocked: false });
   },
 
   removePin: () => {
     localStorage.removeItem(STORAGE_KEYS.PIN_HASH);
     localStorage.removeItem(STORAGE_KEYS.SALT);
-    set({ hasPin: false, pinHash: null, salt: null, isLocked: false });
+    localStorage.removeItem(STORAGE_KEYS.PIN_LENGTH);
+    set({ hasPin: false, pinHash: null, salt: null, pinLength: 4, isLocked: false });
   },
 
   verifyPin: async (pin: string): Promise<boolean> => {

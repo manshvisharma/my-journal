@@ -11,7 +11,8 @@ import { SettingsView } from "./features/settings/SettingsView";
 import { InsightsView } from "./features/insights/InsightsView";
 import { SearchOverlay } from "./features/search/SearchOverlay";
 import { LockScreen } from "./features/lock/LockScreen";
-import { ToastContainer } from "./ui/Toast";
+import { AuthModal } from "./features/auth/AuthModal";
+import { ToastContainer, toast } from "./ui/Toast";
 import { UpdateToast } from "./pwa/UpdateToast";
 import { OfflineIndicator } from "./pwa/OfflineIndicator";
 import { CONFIG } from "./config";
@@ -25,6 +26,8 @@ export default function JournalApp() {
   const { initLock } = useLockStore();
   const { openSearch } = useSearchStore();
   const theme = useJournalStore((state) => state.settings.theme || "system");
+
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   const initialNav = useMemo(() => loadLastNav(), []);
   const [screen, setScreen] = useState<NavScreen>(initialNav.screen === "editor" ? "list" : initialNav.screen);
@@ -105,6 +108,12 @@ export default function JournalApp() {
   };
 
   const handleNewEntry = () => {
+    if (!user) {
+      haptics.warning();
+      toast.info("Please sign in or create an account to start journaling");
+      setShowAuthModal(true);
+      return;
+    }
     haptics.medium();
     const now = Date.now();
     const newId = `entry-${now}-${Math.random().toString(36).substring(2, 7)}`;
@@ -195,7 +204,7 @@ export default function JournalApp() {
       <div className="flex-1 flex w-full h-full overflow-hidden">
         {screen === "settings" ? (
           <div className="w-full h-full z-40">
-            <SettingsView onBack={() => setScreen("home")} onOpenAuthModal={() => {}} />
+            <SettingsView onBack={() => setScreen("home")} onOpenAuthModal={() => setShowAuthModal(true)} />
           </div>
         ) : screen === "insights" ? (
           <div className="w-full h-full z-40">
@@ -308,6 +317,7 @@ export default function JournalApp() {
       )}
 
       <SearchOverlay onSelectEntry={handleOpenEntry} />
+      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
       <LockScreen />
       <UpdateToast />
       <ToastContainer />

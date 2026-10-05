@@ -139,11 +139,12 @@ export const EntryEditorView: React.FC<EntryEditorViewProps> = ({
   // Visual viewport handling for iOS keyboard
   useEffect(() => {
     const handleViewportChange = () => {
-      if (window.visualViewport) {
-        const offset = window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop;
-        const bottomOffset = Math.max(0, offset);
-        viewportBottomOffsetRef.current = bottomOffset;
-        setViewportBottomOffset(bottomOffset);
+      const vv = window.visualViewport;
+      if (vv) {
+        // True keyboard offset from bottom of window
+        const offset = Math.max(0, window.innerHeight - (vv.offsetTop + vv.height));
+        viewportBottomOffsetRef.current = offset;
+        setViewportBottomOffset(offset);
       }
     };
 
@@ -151,11 +152,18 @@ export const EntryEditorView: React.FC<EntryEditorViewProps> = ({
       window.visualViewport.addEventListener('resize', handleViewportChange);
       window.visualViewport.addEventListener('scroll', handleViewportChange);
     }
+    window.addEventListener('focusin', handleViewportChange);
+    window.addEventListener('focusout', () => setViewportBottomOffset(0));
+    window.addEventListener('scroll', handleViewportChange);
+
     return () => {
       if (window.visualViewport) {
         window.visualViewport.removeEventListener('resize', handleViewportChange);
         window.visualViewport.removeEventListener('scroll', handleViewportChange);
       }
+      window.removeEventListener('focusin', handleViewportChange);
+      window.removeEventListener('focusout', () => setViewportBottomOffset(0));
+      window.removeEventListener('scroll', handleViewportChange);
     };
   }, []);
 

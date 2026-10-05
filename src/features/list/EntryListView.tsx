@@ -125,13 +125,24 @@ export const EntryListView: React.FC<EntryListViewProps> = ({
   const isTrash = smartView === 'trash';
   const isMainView = !folderId && (smartView === 'all' || !smartView);
 
+  const [dateFilter, setDateFilter] = useState<string | null>(null);
+
+  const displayedEntries = useMemo(() => {
+    if (!dateFilter) return entries;
+    return entries.filter((entry) => {
+      const d = new Date(entry.entryDate);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      return key === dateFilter;
+    });
+  }, [entries, dateFilter]);
+
   // Group entries by date sections matching Apple Journal screenshots
   const currentYear = new Date().getFullYear();
   const groupedSections = useMemo(() => {
     const groups: Array<{ title: string; entries: Entry[] }> = [];
     const groupMap = new Map<string, Entry[]>();
 
-    entries.forEach((entry) => {
+    displayedEntries.forEach((entry) => {
       const d = new Date(entry.entryDate);
       let title: string;
 
@@ -158,7 +169,7 @@ export const EntryListView: React.FC<EntryListViewProps> = ({
     });
 
     return groups;
-  }, [entries, currentYear]);
+  }, [displayedEntries, currentYear]);
 
   // List "⋯" menu items
   const listMenuItems: MenuItem[] = isTrash
@@ -486,8 +497,25 @@ export const EntryListView: React.FC<EntryListViewProps> = ({
         onScroll={() => {
           if (revealedEntryId) setRevealedEntryId(null);
         }}
-        className="flex-1 overflow-y-auto overscroll-contain overflow-x-hidden px-4 sm:px-5 pb-28 max-w-2xl w-full mx-auto space-y-6"
+        className="flex-1 overflow-y-auto overscroll-contain overflow-x-hidden px-4 sm:px-5 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] max-w-2xl w-full mx-auto space-y-6"
       >
+        {/* Date Filter Active Banner */}
+        {dateFilter && (
+          <div className="flex items-center justify-between px-4 py-2.5 rounded-2xl bg-app-accent-tint border border-app-accent/30 text-app-accent text-sm font-semibold">
+            <span>Filtered by date: {format(new Date(dateFilter + 'T00:00:00'), 'EEEE, d MMMM yyyy')}</span>
+            <button
+              type="button"
+              onClick={() => {
+                haptics.selection();
+                setDateFilter(null);
+              }}
+              className="p-1 rounded-full hover:bg-black/10 dark:hover:bg-white/10 text-app-accent"
+              title="Clear date filter"
+            >
+              <X className="w-4 h-4 stroke-[2.5]" />
+            </button>
+          </div>
+        )}
         {/* Unsorted View "Organise" Banner */}
         {smartView === 'unsorted' && entries.length > 0 && (
           <div className="p-4 rounded-[18px] bg-app-accent-tint border border-app-accent/20 flex items-center justify-between">
@@ -745,6 +773,7 @@ export const EntryListView: React.FC<EntryListViewProps> = ({
       <InsightsSheet
         isOpen={showInsightsSheet}
         onClose={() => setShowInsightsSheet(false)}
+        onSelectDateFilter={(d) => setDateFilter(d)}
       />
     </div>
   );

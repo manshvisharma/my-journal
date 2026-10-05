@@ -10,6 +10,7 @@ export const LockScreen: React.FC = () => {
   const isLocked = useLockStore((state) => state.isLocked);
   const verifyPin = useLockStore((state) => state.verifyPin);
   const removePin = useLockStore((state) => state.removePin);
+  const pinLength = useLockStore((state) => state.pinLength) || 4;
   const isPrivacyCoverVisible = useLockStore((state) => state.isPrivacyCoverVisible);
   const signOut = useAuthStore((state) => state.signOut);
 
@@ -29,18 +30,17 @@ export const LockScreen: React.FC = () => {
   if (!isLocked) return null;
 
   const handleKeyPress = async (digit: string) => {
-    if (enteredPin.length >= 6) return;
+    if (enteredPin.length >= pinLength) return;
     haptics.selection();
     const next = enteredPin + digit;
     setEnteredPin(next);
 
-    // If 4, 5, or 6 digits entered, attempt check
-    if (next.length >= 4) {
+    if (next.length === pinLength) {
       const valid = await verifyPin(next);
       if (valid) {
         haptics.success();
         setEnteredPin('');
-      } else if (next.length === 6) {
+      } else {
         triggerError();
       }
     }
@@ -82,7 +82,7 @@ export const LockScreen: React.FC = () => {
 
           {/* PIN Dots */}
           <div className={`flex items-center gap-4 mt-8 ${isShaking ? 'animate-bounce' : ''}`}>
-            {[0, 1, 2, 3, 4, 5].map((i) => (
+            {Array.from({ length: pinLength }).map((_, i) => (
               <div
                 key={i}
                 className={`w-3.5 h-3.5 rounded-full transition-all duration-150 ${

@@ -3,6 +3,7 @@ import { X, Mail, Lock, LogIn, UserPlus } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 import { Sheet } from '../../ui/Sheet';
 import { toast } from '../../ui/Toast';
+import { haptics } from '../../lib/haptics';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -24,6 +25,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   } = useAuthStore();
 
   const handleGoogleSignIn = async () => {
+    haptics.selection();
     try {
       await signInWithGoogle();
       onClose();
@@ -40,6 +42,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
       return;
     }
 
+    haptics.selection();
     try {
       if (mode === 'signin') {
         await signInWithEmail(email, password);
@@ -48,7 +51,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
       } else {
         await signUpWithEmail(email, password);
         onClose();
-        toast.success('Account created! Verification email sent.');
+        toast.success('Account created successfully!');
       }
     } catch {
       // Handled in store
@@ -57,16 +60,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
   return (
     <Sheet isOpen={isOpen} onClose={onClose} showCloseButton={false}>
-      <div className="flex flex-col gap-5 text-white select-none">
-        <div className="flex items-center justify-between pb-3 border-b border-white/10">
+      <div className="flex flex-col gap-5 text-app-text-primary select-none">
+        <div className="flex items-center justify-between pb-3 border-b border-app-hairline">
           <button
             type="button"
             onClick={onClose}
-            className="p-1 rounded-full text-white/70 hover:text-white"
+            className="p-1 rounded-full text-app-text-secondary hover:text-app-text-primary transition"
           >
             <X className="w-5 h-5" />
           </button>
-          <h3 className="text-base font-semibold">
+          <h3 className="text-base font-semibold text-app-text-primary">
             {mode === 'signin' ? 'Sign In to Reverie' : 'Create Reverie Account'}
           </h3>
           <div className="w-6" />
@@ -74,7 +77,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
         {/* Error banner if any */}
         {error && (
-          <div className="p-3 rounded-xl bg-red-500/20 border border-red-500/30 text-xs text-red-200 flex justify-between items-center">
+          <div className="p-3 rounded-xl bg-red-500/15 border border-red-500/25 text-xs text-red-500 dark:text-red-300 flex justify-between items-center">
             <span>{error}</span>
             <button type="button" onClick={clearError} className="font-bold underline ml-2">
               Dismiss
@@ -87,7 +90,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           type="button"
           onClick={handleGoogleSignIn}
           disabled={loading}
-          className="w-full flex items-center justify-center gap-3 py-3 rounded-2xl bg-white hover:bg-neutral-100 text-neutral-900 font-semibold text-sm shadow-md transition active:scale-98 disabled:opacity-50"
+          className="w-full flex items-center justify-center gap-3 py-3 rounded-2xl bg-black/5 dark:bg-white hover:bg-black/10 dark:hover:bg-neutral-100 text-app-text-primary dark:text-neutral-900 border border-app-card-border font-semibold text-sm shadow-sm transition active:scale-98 disabled:opacity-50"
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24">
             <path
@@ -110,35 +113,35 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           <span>Continue with Google</span>
         </button>
 
-        <div className="flex items-center gap-3 text-xs text-white/40 my-1">
-          <div className="flex-1 h-px bg-white/10" />
+        <div className="flex items-center gap-3 text-xs text-app-text-tertiary my-1">
+          <div className="flex-1 h-px bg-app-hairline" />
           <span>or with email</span>
-          <div className="flex-1 h-px bg-white/10" />
+          <div className="flex-1 h-px bg-app-hairline" />
         </div>
 
         {/* Email & Password form */}
         <form onSubmit={handleEmailSubmit} className="space-y-3.5">
           <div className="relative">
-            <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
+            <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-app-text-tertiary" />
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="Email address"
-              className="w-full bg-white/6 hover:bg-white/10 focus:bg-white/12 border border-white/15 rounded-xl pl-10 pr-3 py-2.5 text-sm text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#6B74F5]"
+              className="w-full bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/15 focus:bg-transparent border border-app-card-border rounded-xl pl-10 pr-3 py-2.5 text-sm text-app-text-primary placeholder-app-text-tertiary focus:outline-none focus:ring-2 focus:ring-app-accent transition"
               required
             />
           </div>
 
           <div className="relative">
-            <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
+            <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-app-text-tertiary" />
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Password (min 6 characters)"
               minLength={6}
-              className="w-full bg-white/6 hover:bg-white/10 focus:bg-white/12 border border-white/15 rounded-xl pl-10 pr-3 py-2.5 text-sm text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#6B74F5]"
+              className="w-full bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/15 focus:bg-transparent border border-app-card-border rounded-xl pl-10 pr-3 py-2.5 text-sm text-app-text-primary placeholder-app-text-tertiary focus:outline-none focus:ring-2 focus:ring-app-accent transition"
               required
             />
           </div>
@@ -146,7 +149,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-[#6B74F5] hover:bg-[#7B84FF] text-white font-semibold text-sm shadow-lg shadow-indigo-500/25 transition active:scale-98 disabled:opacity-50"
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-app-accent hover:opacity-90 text-white font-semibold text-sm shadow-md transition active:scale-98 disabled:opacity-50"
           >
             {mode === 'signin' ? (
               <>
@@ -171,9 +174,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 setMode('signup');
                 clearError();
               }}
-              className="text-xs text-white/60 hover:text-white"
+              className="text-xs text-app-text-secondary hover:text-app-text-primary"
             >
-              Don't have an account? <strong className="text-[#8F97FF]">Sign Up</strong>
+              Don't have an account? <strong className="text-app-accent">Sign Up</strong>
             </button>
           ) : (
             <button
@@ -182,9 +185,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 setMode('signin');
                 clearError();
               }}
-              className="text-xs text-white/60 hover:text-white"
+              className="text-xs text-app-text-secondary hover:text-app-text-primary"
             >
-              Already have an account? <strong className="text-[#8F97FF]">Sign In</strong>
+              Already have an account? <strong className="text-app-accent">Sign In</strong>
             </button>
           )}
         </div>

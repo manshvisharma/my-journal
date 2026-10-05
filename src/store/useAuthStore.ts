@@ -1,13 +1,16 @@
 import { create } from "zustand";
 import type { UserProfile } from "../types";
 
-const DEMO_USER: UserProfile = {
-  uid: "demo-local-user",
-  email: null,
-  displayName: "Journaler",
-  photoURL: null,
-  isAnonymous: false,
-};
+const AUTH_STORAGE_KEY = "reverie_auth_user";
+
+function loadSavedUser(): UserProfile | null {
+  try {
+    const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
 
 interface AuthState {
   user: UserProfile | null;
@@ -23,25 +26,74 @@ interface AuthState {
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
-  user: DEMO_USER,
+  user: loadSavedUser(),
   loading: false,
   error: null,
-  isDemo: true,
+  isDemo: false,
+
   initAuth: () => {
-    set({ user: DEMO_USER, loading: false, isDemo: true });
+    const saved = loadSavedUser();
+    set({ user: saved, loading: false });
     return () => {};
   },
+
   signInWithGoogle: async () => {
-    set({ error: "Cloud accounts are not required. Your journal stays on this device." });
+    set({ loading: true, error: null });
+    try {
+      const mockGoogleUser: UserProfile = {
+        uid: "google-user-" + Date.now(),
+        email: "user@gmail.com",
+        displayName: "Google User",
+        photoURL: null,
+        isAnonymous: false,
+      };
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(mockGoogleUser));
+      set({ user: mockGoogleUser, loading: false });
+    } catch (e: unknown) {
+      set({ error: (e as Error)?.message || "Failed to sign in with Google", loading: false });
+    }
   },
-  signInWithEmail: async () => {
-    set({ error: "Cloud accounts are not required. Your journal stays on this device." });
+
+  signInWithEmail: async (email: string, _pass: string) => {
+    set({ loading: true, error: null });
+    try {
+      const cleanEmail = email.trim();
+      const userProfile: UserProfile = {
+        uid: "user_" + cleanEmail.replace(/[^a-zA-Z0-9]/g, "_"),
+        email: cleanEmail,
+        displayName: cleanEmail.split("@")[0],
+        photoURL: null,
+        isAnonymous: false,
+      };
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userProfile));
+      set({ user: userProfile, loading: false });
+    } catch (e: unknown) {
+      set({ error: (e as Error)?.message || "Failed to sign in", loading: false });
+    }
   },
-  signUpWithEmail: async () => {
-    set({ error: "Cloud accounts are not required. Your journal stays on this device." });
+
+  signUpWithEmail: async (email: string, _pass: string) => {
+    set({ loading: true, error: null });
+    try {
+      const cleanEmail = email.trim();
+      const userProfile: UserProfile = {
+        uid: "user_" + cleanEmail.replace(/[^a-zA-Z0-9]/g, "_"),
+        email: cleanEmail,
+        displayName: cleanEmail.split("@")[0],
+        photoURL: null,
+        isAnonymous: false,
+      };
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userProfile));
+      set({ user: userProfile, loading: false });
+    } catch (e: unknown) {
+      set({ error: (e as Error)?.message || "Failed to create account", loading: false });
+    }
   },
+
   signOut: async () => {
-    set({ user: DEMO_USER, isDemo: true });
+    localStorage.removeItem(AUTH_STORAGE_KEY);
+    set({ user: null, isDemo: false });
   },
+
   clearError: () => set({ error: null }),
 }));

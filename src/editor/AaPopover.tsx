@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import type { Editor } from '@tiptap/react';
 import {
   Bold,
@@ -12,6 +12,7 @@ import {
   Link,
   RemoveFormatting,
 } from 'lucide-react';
+import { haptics } from '../lib/haptics';
 
 interface AaPopoverProps {
   editor: Editor | null;
@@ -21,6 +22,21 @@ interface AaPopoverProps {
 
 export const AaPopover: React.FC<AaPopoverProps> = ({ editor, isOpen, onClose }) => {
   const popoverRef = useRef<HTMLDivElement>(null);
+  const [, setTick] = useState(0);
+
+  // Force re-render whenever selection or editor state changes so active states update immediately
+  useEffect(() => {
+    if (!editor) return;
+    const handleUpdate = () => {
+      setTick((t) => t + 1);
+    };
+    editor.on('transaction', handleUpdate);
+    editor.on('selectionUpdate', handleUpdate);
+    return () => {
+      editor.off('transaction', handleUpdate);
+      editor.off('selectionUpdate', handleUpdate);
+    };
+  }, [editor]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -37,6 +53,7 @@ export const AaPopover: React.FC<AaPopoverProps> = ({ editor, isOpen, onClose })
   if (!isOpen || !editor) return null;
 
   const setLink = () => {
+    haptics.selection();
     const previousUrl = editor.getAttributes('link').href;
     const url = window.prompt('Enter link URL:', previousUrl);
     if (url === null) return;
@@ -56,36 +73,60 @@ export const AaPopover: React.FC<AaPopoverProps> = ({ editor, isOpen, onClose })
       <div className="flex items-center justify-between border-b border-app-hairline pb-2 mb-2 text-xs font-semibold text-app-text-secondary">
         <button
           type="button"
-          onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-          className={`px-2 py-1 rounded-lg transition ${
-            editor.isActive('heading', { level: 1 }) ? 'bg-app-accent text-white' : 'hover:bg-black/5 dark:hover:bg-white/10'
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            haptics.selection();
+            editor.chain().focus().toggleHeading({ level: 1 }).run();
+          }}
+          className={`px-2.5 py-1.5 rounded-lg transition font-medium ${
+            editor.isActive('heading', { level: 1 })
+              ? 'bg-app-accent text-white shadow-sm'
+              : 'hover:bg-black/5 dark:hover:bg-white/10 text-app-text-primary'
           }`}
         >
           Title
         </button>
         <button
           type="button"
-          onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-          className={`px-2 py-1 rounded-lg transition ${
-            editor.isActive('heading', { level: 2 }) ? 'bg-app-accent text-white' : 'hover:bg-black/5 dark:hover:bg-white/10'
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            haptics.selection();
+            editor.chain().focus().toggleHeading({ level: 2 }).run();
+          }}
+          className={`px-2.5 py-1.5 rounded-lg transition font-medium ${
+            editor.isActive('heading', { level: 2 })
+              ? 'bg-app-accent text-white shadow-sm'
+              : 'hover:bg-black/5 dark:hover:bg-white/10 text-app-text-primary'
           }`}
         >
           Heading
         </button>
         <button
           type="button"
-          onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-          className={`px-2 py-1 rounded-lg transition ${
-            editor.isActive('heading', { level: 3 }) ? 'bg-app-accent text-white' : 'hover:bg-black/5 dark:hover:bg-white/10'
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            haptics.selection();
+            editor.chain().focus().toggleHeading({ level: 3 }).run();
+          }}
+          className={`px-2.5 py-1.5 rounded-lg transition font-medium ${
+            editor.isActive('heading', { level: 3 })
+              ? 'bg-app-accent text-white shadow-sm'
+              : 'hover:bg-black/5 dark:hover:bg-white/10 text-app-text-primary'
           }`}
         >
           Subheading
         </button>
         <button
           type="button"
-          onClick={() => editor.chain().focus().setParagraph().run()}
-          className={`px-2 py-1 rounded-lg transition ${
-            editor.isActive('paragraph') ? 'bg-app-accent text-white' : 'hover:bg-black/5 dark:hover:bg-white/10'
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            haptics.selection();
+            editor.chain().focus().setParagraph().run();
+          }}
+          className={`px-2.5 py-1.5 rounded-lg transition font-medium ${
+            editor.isActive('paragraph')
+              ? 'bg-app-accent text-white shadow-sm'
+              : 'hover:bg-black/5 dark:hover:bg-white/10 text-app-text-primary'
           }`}
         >
           Body
@@ -96,43 +137,67 @@ export const AaPopover: React.FC<AaPopoverProps> = ({ editor, isOpen, onClose })
       <div className="grid grid-cols-4 gap-1 border-b border-app-hairline pb-2 mb-2">
         <button
           type="button"
-          onClick={() => editor.chain().focus().toggleBold().run()}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            haptics.selection();
+            editor.chain().focus().toggleBold().run();
+          }}
           className={`p-2 rounded-xl flex items-center justify-center transition ${
-            editor.isActive('bold') ? 'bg-app-accent text-white' : 'hover:bg-black/5 dark:hover:bg-white/10 text-app-text-primary'
+            editor.isActive('bold')
+              ? 'bg-app-accent text-white shadow-sm'
+              : 'hover:bg-black/5 dark:hover:bg-white/10 text-app-text-primary'
           }`}
           title="Bold (Cmd+B)"
         >
-          <Bold className="w-4 h-4" />
+          <Bold className="w-4 h-4 stroke-[2.5]" />
         </button>
         <button
           type="button"
-          onClick={() => editor.chain().focus().toggleItalic().run()}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            haptics.selection();
+            editor.chain().focus().toggleItalic().run();
+          }}
           className={`p-2 rounded-xl flex items-center justify-center transition ${
-            editor.isActive('italic') ? 'bg-app-accent text-white' : 'hover:bg-black/5 dark:hover:bg-white/10 text-app-text-primary'
+            editor.isActive('italic')
+              ? 'bg-app-accent text-white shadow-sm'
+              : 'hover:bg-black/5 dark:hover:bg-white/10 text-app-text-primary'
           }`}
           title="Italic (Cmd+I)"
         >
-          <Italic className="w-4 h-4" />
+          <Italic className="w-4 h-4 stroke-[2.5]" />
         </button>
         <button
           type="button"
-          onClick={() => editor.chain().focus().toggleUnderline().run()}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            haptics.selection();
+            editor.chain().focus().toggleUnderline().run();
+          }}
           className={`p-2 rounded-xl flex items-center justify-center transition ${
-            editor.isActive('underline') ? 'bg-app-accent text-white' : 'hover:bg-black/5 dark:hover:bg-white/10 text-app-text-primary'
+            editor.isActive('underline')
+              ? 'bg-app-accent text-white shadow-sm'
+              : 'hover:bg-black/5 dark:hover:bg-white/10 text-app-text-primary'
           }`}
           title="Underline (Cmd+U)"
         >
-          <UnderlineIcon className="w-4 h-4" />
+          <UnderlineIcon className="w-4 h-4 stroke-[2.5]" />
         </button>
         <button
           type="button"
-          onClick={() => editor.chain().focus().toggleStrike().run()}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            haptics.selection();
+            editor.chain().focus().toggleStrike().run();
+          }}
           className={`p-2 rounded-xl flex items-center justify-center transition ${
-            editor.isActive('strike') ? 'bg-app-accent text-white' : 'hover:bg-black/5 dark:hover:bg-white/10 text-app-text-primary'
+            editor.isActive('strike')
+              ? 'bg-app-accent text-white shadow-sm'
+              : 'hover:bg-black/5 dark:hover:bg-white/10 text-app-text-primary'
           }`}
           title="Strikethrough"
         >
-          <Strikethrough className="w-4 h-4" />
+          <Strikethrough className="w-4 h-4 stroke-[2.5]" />
         </button>
       </div>
 
@@ -140,9 +205,15 @@ export const AaPopover: React.FC<AaPopoverProps> = ({ editor, isOpen, onClose })
       <div className="grid grid-cols-6 gap-1">
         <button
           type="button"
-          onClick={() => editor.chain().focus().toggleBulletList().run()}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            haptics.selection();
+            editor.chain().focus().toggleBulletList().run();
+          }}
           className={`p-2 rounded-xl flex items-center justify-center transition ${
-            editor.isActive('bulletList') ? 'bg-app-accent text-white' : 'hover:bg-black/5 dark:hover:bg-white/10 text-app-text-primary'
+            editor.isActive('bulletList')
+              ? 'bg-app-accent text-white shadow-sm'
+              : 'hover:bg-black/5 dark:hover:bg-white/10 text-app-text-primary'
           }`}
           title="Bullet List"
         >
@@ -150,9 +221,15 @@ export const AaPopover: React.FC<AaPopoverProps> = ({ editor, isOpen, onClose })
         </button>
         <button
           type="button"
-          onClick={() => editor.chain().focus().toggleOrderedList().run()}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            haptics.selection();
+            editor.chain().focus().toggleOrderedList().run();
+          }}
           className={`p-2 rounded-xl flex items-center justify-center transition ${
-            editor.isActive('orderedList') ? 'bg-app-accent text-white' : 'hover:bg-black/5 dark:hover:bg-white/10 text-app-text-primary'
+            editor.isActive('orderedList')
+              ? 'bg-app-accent text-white shadow-sm'
+              : 'hover:bg-black/5 dark:hover:bg-white/10 text-app-text-primary'
           }`}
           title="Numbered List"
         >
@@ -160,9 +237,15 @@ export const AaPopover: React.FC<AaPopoverProps> = ({ editor, isOpen, onClose })
         </button>
         <button
           type="button"
-          onClick={() => editor.chain().focus().toggleTaskList().run()}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            haptics.selection();
+            editor.chain().focus().toggleTaskList().run();
+          }}
           className={`p-2 rounded-xl flex items-center justify-center transition ${
-            editor.isActive('taskList') ? 'bg-app-accent text-white' : 'hover:bg-black/5 dark:hover:bg-white/10 text-app-text-primary'
+            editor.isActive('taskList')
+              ? 'bg-app-accent text-white shadow-sm'
+              : 'hover:bg-black/5 dark:hover:bg-white/10 text-app-text-primary'
           }`}
           title="Checklist"
         >
@@ -170,9 +253,15 @@ export const AaPopover: React.FC<AaPopoverProps> = ({ editor, isOpen, onClose })
         </button>
         <button
           type="button"
-          onClick={() => editor.chain().focus().toggleBlockquote().run()}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            haptics.selection();
+            editor.chain().focus().toggleBlockquote().run();
+          }}
           className={`p-2 rounded-xl flex items-center justify-center transition ${
-            editor.isActive('blockquote') ? 'bg-app-accent text-white' : 'hover:bg-black/5 dark:hover:bg-white/10 text-app-text-primary'
+            editor.isActive('blockquote')
+              ? 'bg-app-accent text-white shadow-sm'
+              : 'hover:bg-black/5 dark:hover:bg-white/10 text-app-text-primary'
           }`}
           title="Quote"
         >
@@ -180,9 +269,12 @@ export const AaPopover: React.FC<AaPopoverProps> = ({ editor, isOpen, onClose })
         </button>
         <button
           type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={setLink}
           className={`p-2 rounded-xl flex items-center justify-center transition ${
-            editor.isActive('link') ? 'bg-app-accent text-white' : 'hover:bg-black/5 dark:hover:bg-white/10 text-app-text-primary'
+            editor.isActive('link')
+              ? 'bg-app-accent text-white shadow-sm'
+              : 'hover:bg-black/5 dark:hover:bg-white/10 text-app-text-primary'
           }`}
           title="Link"
         >
@@ -190,7 +282,11 @@ export const AaPopover: React.FC<AaPopoverProps> = ({ editor, isOpen, onClose })
         </button>
         <button
           type="button"
-          onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            haptics.selection();
+            editor.chain().focus().unsetAllMarks().clearNodes().run();
+          }}
           className="p-2 rounded-xl flex items-center justify-center hover:bg-black/5 dark:hover:bg-white/10 text-app-text-secondary transition"
           title="Clear formatting"
         >

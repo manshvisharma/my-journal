@@ -218,7 +218,7 @@ export const EntryCard: React.FC<EntryCardProps> = React.memo(
       clearLongPress();
       longPressRef.current = window.setTimeout(() => {
         if (movedRef.current) return;
-        haptics.medium();
+        haptics.heavy();
         setShowPeek(true);
       }, 380);
     };
