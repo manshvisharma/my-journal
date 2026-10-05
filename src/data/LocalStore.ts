@@ -3,189 +3,269 @@ import type { DataStore, DocChange, Unsubscribe } from './types';
 import { generateDemoEntries, getInitialDemoFolders, getInitialDemoSettings } from './demoSeed';
 import { CONFIG } from '../config';
 
-const STORAGE_KEYS = {
-  ENTRIES: 'reverie_local_entries',
-  FOLDERS: 'reverie_local_folders',
-  SETTINGS: 'reverie_local_settings',
-  MEDIA: 'reverie_local_media',
-};
-
 export class LocalStore implements DataStore {
   public readonly isDemo = true;
 
-  private entriesMap = new Map<string, Entry>();
-  private foldersMap = new Map<string, Folder>();
-  private settings: UserSettings = getInitialDemoSettings();
+  private userEntries = new Map<string, Map<string, Entry>>();
+  private userFolders = new Map<string, Map<string, Folder>>();
+  private userSettings = new Map<string, UserSettings>();
   private mediaMap = new Map<string, MediaDoc>();
 
-  private entriesSubscribers = new Set<
-    (changes: DocChange<Entry>[], isFromCache: boolean, hasPendingWrites: boolean) => void
+  private entriesSubscribers = new Map<
+    string,
+    Set<(changes: DocChange<Entry>[], isFromCache: boolean, hasPendingWrites: boolean) => void>
   >();
-  private foldersSubscribers = new Set<(changes: DocChange<Folder>[]) => void>();
-  private settingsSubscribers = new Set<(settings: UserSettings | null) => void>();
+  private foldersSubscribers = new Map<string, Set<(changes: DocChange<Folder>[]) => void>>();
+  private settingsSubscribers = new Map<string, Set<(settings: UserSettings | null) => void>>();
 
   constructor() {
-    if (typeof window !== "undefined") {
-      this.loadFromStorage();
+    if (typeof window !== 'undefined') {
+      try {
+        const storedMedia = localStorage.getItem('reverie_local_media');
+        if (storedMedia) {
+          const parsed: MediaDoc[] = JSON.parse(storedMedia);
+          parsed.forEach((m) => this.mediaMap.set(m.id, m));
+        }
+      } catch (err) {
+        console.warn('Failed to load media from localStorage', err);
+      }
     }
   }
 
-  private loadFromStorage() {
+  private getEntriesKey(uid: string): string {
+    return uid === 'demo-local-user' || !uid ? 'reverie_demo_entries' : `reverie_user_entries_${uid}`;
+  }
+
+  private getFoldersKey(uid: string): string {
+    return uid === 'demo-local-user' || !uid ? 'reverie_demo_folders' : `reverie_user_folders_${uid}`;
+  }
+
+  private getSettingsKey(uid: string): string {
+    return uid === 'demo-local-user' || !uid ? 'reverie_demo_settings' : `reverie_user_settings_${uid}`;
+  }
+
+  private getEntriesMap(uid: string): Map<string, Entry> {
+    if (!this.userEntries.has(uid)) {
+      const map = new Map<string, Entry>();
+      if (typeof window !== 'undefined') {
+        try {
+          const isDemo = uid === 'demo-local-user' || !uid;
+          const key = this.getEntriesKey(uid);
+          const stored = localStorage.getItem(key);
+          if (stored) {
+            const parsed: Entry[] = JSON.parse(stored);
+            parsed.forEach((e) => map.set(e.id, e));
+          } else if (isDemo) {
+            // Seed sample entries ONLY in demo exploration mode
+            const demoEntries = generateDemoEntries();
+            demoEntries.forEach((e) => map.set(e.id, e));
+            localStorage.setItem(key, JSON.stringify(demoEntries));
+          }
+          // Real users start with 0 entries (completely clean and fresh!)
+        } catch (err) {
+          console.warn('Could not load entries from localStorage for uid:', uid, err);
+        }
+      }
+      this.userEntries.set(uid, map);
+    }
+    return this.userEntries.get(uid)!;
+  }
+
+  private getFoldersMap(uid: string): Map<string, Folder> {
+    if (!this.userFolders.has(uid)) {
+      const map = new Map<string, Folder>();
+      if (typeof window !== 'undefined') {
+        try {
+          const isDemo = uid === 'demo-local-user' || !uid;
+          const key = this.getFoldersKey(uid);
+          const stored = localStorage.getItem(key);
+          if (stored) {
+            const parsed: Folder[] = JSON.parse(stored);
+            parsed.forEach((f) => map.set(f.id, f));
+          } else if (isDemo) {
+            // Seed sample folders ONLY in demo exploration mode
+            const initialFolders = getInitialDemoFolders();
+            initialFolders.forEach((f) => map.set(f.id, f));
+            localStorage.setItem(key, JSON.stringify(initialFolders));
+          }
+          // Real users start with 0 custom folders!
+        } catch (err) {
+          console.warn('Could not load folders from localStorage for uid:', uid, err);
+        }
+      }
+      this.userFolders.set(uid, map);
+    }
+    return this.userFolders.get(uid)!;
+  }
+
+  private getSettings(uid: string): UserSettings {
+    if (!this.userSettings.has(uid)) {
+      let settings = getInitialDemoSettings();
+      if (typeof window !== 'undefined') {
+        try {
+          const key = this.getSettingsKey(uid);
+          const stored = localStorage.getItem(key);
+          if (stored) {
+            settings = { ...settings, ...JSON.parse(stored) };
+          }
+        } catch (err) {
+          console.warn('Could not load settings from localStorage for uid:', uid, err);
+        }
+      }
+      this.userSettings.set(uid, settings);
+    }
+    return this.userSettings.get(uid)!;
+  }
+
+  private persistEntries(uid: string) {
+    if (typeof window === 'undefined') return;
     try {
-      const storedFolders = localStorage.getItem(STORAGE_KEYS.FOLDERS);
-      if (storedFolders) {
-        const parsed: Folder[] = JSON.parse(storedFolders);
-        parsed.forEach((f) => this.foldersMap.set(f.id, f));
-      } else {
-        const initialFolders = getInitialDemoFolders();
-        initialFolders.forEach((f) => this.foldersMap.set(f.id, f));
-        this.persistFolders();
-      }
-
-      const storedSettings = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-      if (storedSettings) {
-        this.settings = { ...getInitialDemoSettings(), ...JSON.parse(storedSettings) };
-      } else {
-        this.persistSettings();
-      }
-
-      const storedEntries = localStorage.getItem(STORAGE_KEYS.ENTRIES);
-      if (storedEntries) {
-        const parsed: Entry[] = JSON.parse(storedEntries);
-        parsed.forEach((e) => this.entriesMap.set(e.id, e));
-      } else {
-        // Seed 60 sample entries on first run
-        const demoEntries = generateDemoEntries();
-        demoEntries.forEach((e) => this.entriesMap.set(e.id, e));
-        this.persistEntries();
-      }
-
-      const storedMedia = localStorage.getItem(STORAGE_KEYS.MEDIA);
-      if (storedMedia) {
-        const parsed: MediaDoc[] = JSON.parse(storedMedia);
-        parsed.forEach((m) => this.mediaMap.set(m.id, m));
-      }
+      const map = this.getEntriesMap(uid);
+      const arr = Array.from(map.values());
+      localStorage.setItem(this.getEntriesKey(uid), JSON.stringify(arr));
     } catch (err) {
-      console.warn('Could not load from localStorage, initializing fresh in-memory demo', err);
-      getInitialDemoFolders().forEach((f) => this.foldersMap.set(f.id, f));
-      generateDemoEntries().forEach((e) => this.entriesMap.set(e.id, e));
+      console.warn('Failed to persist entries to localStorage for uid:', uid, err);
     }
   }
 
-  private persistEntries() {
+  private persistFolders(uid: string) {
+    if (typeof window === 'undefined') return;
     try {
-      const arr = Array.from(this.entriesMap.values());
-      localStorage.setItem(STORAGE_KEYS.ENTRIES, JSON.stringify(arr));
+      const map = this.getFoldersMap(uid);
+      const arr = Array.from(map.values());
+      localStorage.setItem(this.getFoldersKey(uid), JSON.stringify(arr));
     } catch (err) {
-      console.warn('Failed to persist entries to localStorage', err);
+      console.warn('Failed to persist folders to localStorage for uid:', uid, err);
     }
   }
 
-  private persistFolders() {
+  private persistSettings(uid: string) {
+    if (typeof window === 'undefined') return;
     try {
-      const arr = Array.from(this.foldersMap.values());
-      localStorage.setItem(STORAGE_KEYS.FOLDERS, JSON.stringify(arr));
+      const settings = this.getSettings(uid);
+      localStorage.setItem(this.getSettingsKey(uid), JSON.stringify(settings));
     } catch (err) {
-      console.warn('Failed to persist folders to localStorage', err);
-    }
-  }
-
-  private persistSettings() {
-    try {
-      localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(this.settings));
-    } catch (err) {
-      console.warn('Failed to persist settings to localStorage', err);
+      console.warn('Failed to persist settings to localStorage for uid:', uid, err);
     }
   }
 
   private persistMedia() {
+    if (typeof window === 'undefined') return;
     try {
       const arr = Array.from(this.mediaMap.values());
-      localStorage.setItem(STORAGE_KEYS.MEDIA, JSON.stringify(arr));
+      localStorage.setItem('reverie_local_media', JSON.stringify(arr));
     } catch (err) {
       console.warn('Failed to persist media to localStorage', err);
     }
   }
 
   public subscribeEntries(
-    _uid: string,
+    uid: string,
     onChanges: (changes: DocChange<Entry>[], isFromCache: boolean, hasPendingWrites: boolean) => void
   ): Unsubscribe {
-    this.entriesSubscribers.add(onChanges);
-    // Initial emit of all current entries as 'added'
-    const changes: DocChange<Entry>[] = Array.from(this.entriesMap.values()).map((doc) => ({
+    if (!this.entriesSubscribers.has(uid)) {
+      this.entriesSubscribers.set(uid, new Set());
+    }
+    const subs = this.entriesSubscribers.get(uid)!;
+    subs.add(onChanges);
+
+    const map = this.getEntriesMap(uid);
+    const changes: DocChange<Entry>[] = Array.from(map.values()).map((doc) => ({
       type: 'added',
       doc,
     }));
+
     setTimeout(() => {
       onChanges(changes, true, false);
     }, 0);
 
     return () => {
-      this.entriesSubscribers.delete(onChanges);
+      subs.delete(onChanges);
     };
   }
 
   public subscribeFolders(
-    _uid: string,
+    uid: string,
     onChanges: (changes: DocChange<Folder>[]) => void
   ): Unsubscribe {
-    this.foldersSubscribers.add(onChanges);
-    const changes: DocChange<Folder>[] = Array.from(this.foldersMap.values()).map((doc) => ({
+    if (!this.foldersSubscribers.has(uid)) {
+      this.foldersSubscribers.set(uid, new Set());
+    }
+    const subs = this.foldersSubscribers.get(uid)!;
+    subs.add(onChanges);
+
+    const map = this.getFoldersMap(uid);
+    const changes: DocChange<Folder>[] = Array.from(map.values()).map((doc) => ({
       type: 'added',
       doc,
     }));
+
     setTimeout(() => {
       onChanges(changes);
     }, 0);
 
     return () => {
-      this.foldersSubscribers.delete(onChanges);
+      subs.delete(onChanges);
     };
   }
 
   public subscribeSettings(
-    _uid: string,
+    uid: string,
     onUpdate: (settings: UserSettings | null) => void
   ): Unsubscribe {
-    this.settingsSubscribers.add(onUpdate);
+    if (!this.settingsSubscribers.has(uid)) {
+      this.settingsSubscribers.set(uid, new Set());
+    }
+    const subs = this.settingsSubscribers.get(uid)!;
+    subs.add(onUpdate);
+
+    const currentSettings = this.getSettings(uid);
     setTimeout(() => {
-      onUpdate(this.settings);
+      onUpdate(currentSettings);
     }, 0);
 
     return () => {
-      this.settingsSubscribers.delete(onUpdate);
+      subs.delete(onUpdate);
     };
   }
 
-  public async saveEntry(_uid: string, entry: Entry): Promise<void> {
-    const isNew = !this.entriesMap.has(entry.id);
-    this.entriesMap.set(entry.id, entry);
-    this.persistEntries();
+  public async saveEntry(uid: string, entry: Entry): Promise<void> {
+    const map = this.getEntriesMap(uid);
+    const isNew = !map.has(entry.id);
+    map.set(entry.id, entry);
+    this.persistEntries(uid);
 
     const change: DocChange<Entry> = {
       type: isNew ? 'added' : 'modified',
       doc: entry,
     };
-    this.entriesSubscribers.forEach((sub) => sub([change], true, false));
+    const subs = this.entriesSubscribers.get(uid);
+    if (subs) {
+      subs.forEach((sub) => sub([change], true, false));
+    }
   }
 
-  public async deleteEntryPermanently(_uid: string, entryId: string): Promise<void> {
-    const entry = this.entriesMap.get(entryId);
+  public async deleteEntryPermanently(uid: string, entryId: string): Promise<void> {
+    const map = this.getEntriesMap(uid);
+    const entry = map.get(entryId);
     if (!entry) return;
 
-    this.entriesMap.delete(entryId);
-    this.persistEntries();
+    map.delete(entryId);
+    this.persistEntries(uid);
 
     const change: DocChange<Entry> = {
       type: 'removed',
       doc: entry,
     };
-    this.entriesSubscribers.forEach((sub) => sub([change], true, false));
+    const subs = this.entriesSubscribers.get(uid);
+    if (subs) {
+      subs.forEach((sub) => sub([change], true, false));
+    }
   }
 
   public async softDeleteEntry(uid: string, entryId: string): Promise<void> {
-    const entry = this.entriesMap.get(entryId);
+    const map = this.getEntriesMap(uid);
+    const entry = map.get(entryId);
     if (!entry) return;
     const updated: Entry = {
       ...entry,
@@ -196,7 +276,8 @@ export class LocalStore implements DataStore {
   }
 
   public async restoreEntry(uid: string, entryId: string): Promise<void> {
-    const entry = this.entriesMap.get(entryId);
+    const map = this.getEntriesMap(uid);
+    const entry = map.get(entryId);
     if (!entry) return;
     const updated: Entry = {
       ...entry,
@@ -208,8 +289,9 @@ export class LocalStore implements DataStore {
 
   public async purgeOldDeletedEntries(uid: string, maxAgeDays: number = CONFIG.autoPurgeDays): Promise<number> {
     const cutoff = Date.now() - maxAgeDays * 86400000;
+    const map = this.getEntriesMap(uid);
     let purged = 0;
-    for (const [id, entry] of this.entriesMap.entries()) {
+    for (const [id, entry] of map.entries()) {
       if (entry.deletedAt && entry.deletedAt < cutoff) {
         await this.deleteEntryPermanently(uid, id);
         purged++;
@@ -223,12 +305,13 @@ export class LocalStore implements DataStore {
     entries: Entry[],
     onProgress?: (completed: number, total: number) => void
   ): Promise<void> {
+    const map = this.getEntriesMap(uid);
     const total = entries.length;
     const changes: DocChange<Entry>[] = [];
 
     entries.forEach((e, idx) => {
-      const isNew = !this.entriesMap.has(e.id);
-      this.entriesMap.set(e.id, e);
+      const isNew = !map.has(e.id);
+      map.set(e.id, e);
       changes.push({
         type: isNew ? 'added' : 'modified',
         doc: e,
@@ -238,40 +321,48 @@ export class LocalStore implements DataStore {
       }
     });
 
-    this.persistEntries();
-    this.entriesSubscribers.forEach((sub) => sub(changes, true, false));
+    this.persistEntries(uid);
+    const subs = this.entriesSubscribers.get(uid);
+    if (subs) {
+      subs.forEach((sub) => sub(changes, true, false));
+    }
   }
 
-  public async saveFolder(_uid: string, folder: Folder): Promise<void> {
-    const isNew = !this.foldersMap.has(folder.id);
-    this.foldersMap.set(folder.id, folder);
-    this.persistFolders();
+  public async saveFolder(uid: string, folder: Folder): Promise<void> {
+    const map = this.getFoldersMap(uid);
+    const isNew = !map.has(folder.id);
+    map.set(folder.id, folder);
+    this.persistFolders(uid);
 
     const change: DocChange<Folder> = {
       type: isNew ? 'added' : 'modified',
       doc: folder,
     };
-    this.foldersSubscribers.forEach((sub) => sub([change]));
+    const subs = this.foldersSubscribers.get(uid);
+    if (subs) {
+      subs.forEach((sub) => sub([change]));
+    }
   }
 
   public async deleteFolder(uid: string, folderId: string): Promise<void> {
-    const folder = this.foldersMap.get(folderId);
+    const map = this.getFoldersMap(uid);
+    const folder = map.get(folderId);
     if (!folder) return;
 
     // Reparent any child folders
-    for (const f of this.foldersMap.values()) {
+    for (const f of map.values()) {
       if (f.parentId === folderId) {
         f.parentId = folder.parentId;
         this.saveFolder(uid, f);
       }
     }
 
-    // Remove folder membership from all entries (never delete entries!)
+    // Remove folder membership from all entries
+    const entriesMap = this.getEntriesMap(uid);
     const entriesToUpdate: Entry[] = [];
-    for (const entry of this.entriesMap.values()) {
+    for (const entry of entriesMap.values()) {
       if (entry.folderIds.includes(folderId)) {
         const newFolderIds = entry.folderIds.filter((id) => id !== folderId);
-        // If entry has no other folder, assign default "Journal" folder
         if (newFolderIds.length === 0) {
           newFolderIds.push(CONFIG.defaultFolderId);
         }
@@ -284,20 +375,29 @@ export class LocalStore implements DataStore {
     }
     await this.batchSaveEntries(uid, entriesToUpdate);
 
-    this.foldersMap.delete(folderId);
-    this.persistFolders();
+    map.delete(folderId);
+    this.persistFolders(uid);
 
     const change: DocChange<Folder> = {
       type: 'removed',
       doc: folder,
     };
-    this.foldersSubscribers.forEach((sub) => sub([change]));
+    const subs = this.foldersSubscribers.get(uid);
+    if (subs) {
+      subs.forEach((sub) => sub([change]));
+    }
   }
 
-  public async saveSettings(_uid: string, settings: Partial<UserSettings>): Promise<void> {
-    this.settings = { ...this.settings, ...settings };
-    this.persistSettings();
-    this.settingsSubscribers.forEach((sub) => sub(this.settings));
+  public async saveSettings(uid: string, settings: Partial<UserSettings>): Promise<void> {
+    const current = this.getSettings(uid);
+    const updated = { ...current, ...settings };
+    this.userSettings.set(uid, updated);
+    this.persistSettings(uid);
+
+    const subs = this.settingsSubscribers.get(uid);
+    if (subs) {
+      subs.forEach((sub) => sub(updated));
+    }
   }
 
   public async saveMedia(_uid: string, mediaDoc: MediaDoc): Promise<void> {
@@ -319,10 +419,11 @@ export class LocalStore implements DataStore {
   }
 
   public async verifyCloudCopy(
-    _uid: string,
+    uid: string,
     localEntryCount: number
   ): Promise<{ localCount: number; cloudCount: number; matches: boolean; hasPending: boolean }> {
-    const nonDeletedCount = Array.from(this.entriesMap.values()).filter((e) => !e.deletedAt).length;
+    const map = this.getEntriesMap(uid);
+    const nonDeletedCount = Array.from(map.values()).filter((e) => !e.deletedAt).length;
     return {
       localCount: localEntryCount,
       cloudCount: nonDeletedCount,
@@ -331,14 +432,13 @@ export class LocalStore implements DataStore {
     };
   }
 
-  // Developer tool: generate 2,000 entries for stress testing
   public async generateStressTestEntries(uid: string, onProgress?: (p: number, t: number) => void): Promise<number> {
     const now = Date.now();
     const batch: Entry[] = [];
     const count = 2000;
 
     for (let i = 0; i < count; i++) {
-      const entryDate = now - i * 14400000; // ~4 hours apart
+      const entryDate = now - i * 14400000;
       const title = `Performance Stress Test Entry #${i + 1}`;
       const plainText = `This is generated entry number ${i + 1} to test list virtualisation, search speed, and memory pressure. Hinglish words like sukoon, khushi, mehnat, and shanti are indexed. Checking rapid rendering and smooth scrolling.`;
       batch.push({
@@ -363,6 +463,8 @@ export class LocalStore implements DataStore {
         media: [],
         coverThumb: null,
         songs: [],
+        location: null,
+        attachmentOrder: [],
         deletedAt: null,
         source: 'app',
         importKey: null,

@@ -56,13 +56,50 @@ async function hashPinWithPBKDF2(pin: string, saltStr: string): Promise<string> 
   return arr.map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+function getInitialLockState() {
+  if (typeof window === 'undefined') {
+    return {
+      isLocked: false,
+      hasPin: false,
+      pinHash: null,
+      pinLength: 4,
+      salt: null,
+      lockTimeoutMinutes: 5,
+    };
+  }
+  try {
+    const pinHash = localStorage.getItem(STORAGE_KEYS.PIN_HASH);
+    const salt = localStorage.getItem(STORAGE_KEYS.SALT);
+    const timeoutStr = localStorage.getItem(STORAGE_KEYS.TIMEOUT);
+    const timeout = timeoutStr ? parseInt(timeoutStr, 10) : 5;
+    const lengthStr = localStorage.getItem(STORAGE_KEYS.PIN_LENGTH);
+    const pinLength = lengthStr ? parseInt(lengthStr, 10) : 4;
+    const hasPin = Boolean(pinHash && salt);
+    return {
+      isLocked: hasPin,
+      hasPin,
+      pinHash,
+      pinLength,
+      salt,
+      lockTimeoutMinutes: timeout,
+    };
+  } catch {
+    return {
+      isLocked: false,
+      hasPin: false,
+      pinHash: null,
+      pinLength: 4,
+      salt: null,
+      lockTimeoutMinutes: 5,
+    };
+  }
+}
+
+const initialLockState = getInitialLockState();
+let isVisibilityListenerAttached = false;
+
 export const useLockStore = create<LockState>((set, get) => ({
-  isLocked: false,
-  hasPin: false,
-  pinHash: null,
-  pinLength: 4,
-  salt: null,
-  lockTimeoutMinutes: 5,
+  ...initialLockState,
   isPrivacyCoverVisible: false,
 
   initLock: () => {
@@ -81,11 +118,12 @@ export const useLockStore = create<LockState>((set, get) => ({
         pinLength,
         salt,
         lockTimeoutMinutes: timeout,
-        isLocked: hasPin, // Lock on launch if PIN is configured
+        isLocked: hasPin ? true : get().isLocked,
       });
 
       // Set up visibilitychange listener for privacy cover and auto-lock
-      if (typeof document !== 'undefined') {
+      if (typeof document !== 'undefined' && !isVisibilityListenerAttached) {
+        isVisibilityListenerAttached = true;
         document.addEventListener('visibilitychange', () => {
           if (document.visibilityState === 'hidden') {
             // Show privacy cover for iOS app switcher

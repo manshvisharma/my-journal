@@ -1,10 +1,22 @@
 import React, { useState } from 'react';
-import { Lock, Delete } from 'lucide-react';
+import { Lock, Delete, ShieldCheck } from 'lucide-react';
 import { useLockStore } from '../../store/useLockStore';
 import { useAuthStore } from '../../store/useAuthStore';
 import { ConfirmSheet } from '../../ui/ConfirmSheet';
 import { toast } from '../../ui/Toast';
 import { haptics } from '../../lib/haptics';
+
+const KEYPAD_KEYS = [
+  { digit: '1', letters: '' },
+  { digit: '2', letters: 'A B C' },
+  { digit: '3', letters: 'D E F' },
+  { digit: '4', letters: 'G H I' },
+  { digit: '5', letters: 'J K L' },
+  { digit: '6', letters: 'M N O' },
+  { digit: '7', letters: 'P Q R S' },
+  { digit: '8', letters: 'T U V' },
+  { digit: '9', letters: 'W X Y Z' },
+];
 
 export const LockScreen: React.FC = () => {
   const isLocked = useLockStore((state) => state.isLocked);
@@ -18,11 +30,13 @@ export const LockScreen: React.FC = () => {
   const [isShaking, setIsShaking] = useState(false);
   const [showForgotConfirm, setShowForgotConfirm] = useState(false);
 
-  // If privacy cover is active (app switcher), show blank frosted shield
+  // If privacy cover is active (app switcher), show frosted shield
   if (isPrivacyCoverVisible && !isLocked) {
     return (
-      <div className="fixed inset-0 z-50 bg-[#12111E] backdrop-blur-3xl flex items-center justify-center">
-        <Lock className="w-12 h-12 text-white/30" />
+      <div className="fixed inset-0 z-50 bg-app-bg/95 backdrop-blur-3xl flex items-center justify-center">
+        <div className="w-16 h-16 rounded-full bg-black/5 dark:bg-white/10 flex items-center justify-center text-app-text-tertiary">
+          <Lock className="w-8 h-8" />
+        </div>
       </div>
     );
   }
@@ -54,11 +68,11 @@ export const LockScreen: React.FC = () => {
   const triggerError = () => {
     haptics.error();
     setIsShaking(true);
-    toast.error('Incorrect PIN');
+    toast.error('Incorrect Passcode');
     setTimeout(() => {
       setIsShaking(false);
       setEnteredPin('');
-    }, 500);
+    }, 450);
   };
 
   const handleForgotPinConfirm = async () => {
@@ -66,95 +80,112 @@ export const LockScreen: React.FC = () => {
     await signOut();
     setEnteredPin('');
     setShowForgotConfirm(false);
-    toast.info('PIN reset. Please sign in again.');
+    toast.info('Passcode reset. Please sign in again.');
   };
 
   return (
     <>
-      <div className="fixed inset-0 z-50 bg-[#12111E] text-white flex flex-col justify-between py-12 px-6 select-none">
-        {/* Top Header */}
-        <div className="flex flex-col items-center pt-8">
-          <div className="w-16 h-16 rounded-full bg-white/8 border border-white/12 flex items-center justify-center mb-4 text-[#8F97FF] shadow-xl">
-            <Lock className="w-7 h-7" />
+      <div className="fixed inset-0 z-50 bg-app-bg/95 backdrop-blur-3xl text-app-text-primary flex flex-col justify-between py-10 px-6 select-none transition-colors duration-200">
+        {/* Top Header with Apple Lock Glyph */}
+        <div className="flex flex-col items-center pt-8 sm:pt-12">
+          <div className="relative mb-5">
+            <div className="absolute -inset-1 rounded-full bg-app-accent/20 blur-md" />
+            <div className="relative w-15 h-15 rounded-full bg-black/5 dark:bg-white/10 border border-black/10 dark:border-white/15 flex items-center justify-center text-app-accent shadow-lg">
+              <Lock className="w-6 h-6 stroke-[2.2]" />
+            </div>
           </div>
-          <h2 className="text-xl font-bold tracking-tight">Reverie is Locked</h2>
-          <p className="text-xs text-white/50 mt-1">Enter your PIN to continue</p>
+          <h2 className="text-xl font-bold tracking-tight text-app-text-primary">
+            Enter Passcode
+          </h2>
+          <p className="text-xs text-app-text-tertiary mt-1 font-medium">
+            Your journal is protected
+          </p>
 
-          {/* PIN Dots */}
-          <div className={`flex items-center gap-4 mt-8 ${isShaking ? 'animate-bounce' : ''}`}>
-            {Array.from({ length: pinLength }).map((_, i) => (
-              <div
-                key={i}
-                className={`w-3.5 h-3.5 rounded-full transition-all duration-150 ${
-                  i < enteredPin.length
-                    ? 'bg-white scale-110 shadow'
-                    : 'bg-white/20'
-                }`}
-              />
-            ))}
+          {/* Passcode Indicator Dots */}
+          <div className={`flex items-center gap-4 mt-8 ${isShaking ? 'animate-shake' : ''}`}>
+            {Array.from({ length: pinLength }).map((_, i) => {
+              const isFilled = i < enteredPin.length;
+              return (
+                <div
+                  key={i}
+                  className={`w-3.5 h-3.5 rounded-full transition-all duration-150 ${
+                    isFilled
+                      ? 'bg-app-text-primary scale-110 shadow-sm'
+                      : 'border-2 border-app-text-tertiary/40 bg-transparent'
+                  }`}
+                />
+              );
+            })}
           </div>
         </div>
 
-        {/* Numeric Keypad */}
-        <div className="max-w-xs mx-auto w-full">
-          <div className="grid grid-cols-3 gap-4 text-center">
-            {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
+        {/* Apple Style Numeric Keypad */}
+        <div className="max-w-[310px] sm:max-w-[340px] mx-auto w-full pb-4">
+          <div className="grid grid-cols-3 gap-y-4 gap-x-5 place-items-center">
+            {KEYPAD_KEYS.map(({ digit, letters }) => (
               <button
                 key={digit}
                 type="button"
                 onClick={() => handleKeyPress(digit)}
-                className="w-18 h-18 sm:w-20 sm:h-20 rounded-full bg-white/6 hover:bg-white/12 active:bg-white/20 text-2xl font-semibold flex items-center justify-center mx-auto transition active:scale-95 border border-white/8"
+                className="w-[74px] h-[74px] sm:w-[80px] sm:h-[80px] rounded-full bg-black/[0.04] dark:bg-white/[0.08] active:bg-black/[0.14] dark:active:bg-white/[0.22] border border-black/[0.06] dark:border-white/[0.09] flex flex-col items-center justify-center transition-all duration-100 active:scale-95 shadow-xs"
               >
-                {digit}
+                <span className="text-[28px] font-normal leading-none text-app-text-primary">
+                  {digit}
+                </span>
+                {letters ? (
+                  <span className="text-[9px] font-bold tracking-[0.14em] text-app-text-tertiary uppercase mt-1 leading-none">
+                    {letters}
+                  </span>
+                ) : (
+                  <span className="h-[9px] mt-1" />
+                )}
               </button>
             ))}
 
-            {/* Empty spacer */}
-            <div />
-
-            {/* 0 */}
-            <button
-              type="button"
-              onClick={() => handleKeyPress('0')}
-              className="w-18 h-18 sm:w-20 sm:h-20 rounded-full bg-white/6 hover:bg-white/12 active:bg-white/20 text-2xl font-semibold flex items-center justify-center mx-auto transition active:scale-95 border border-white/8"
-            >
-              0
-            </button>
-
-            {/* Backspace */}
-            <button
-              type="button"
-              onClick={handleDelete}
-              className="w-18 h-18 sm:w-20 sm:h-20 rounded-full flex items-center justify-center mx-auto text-white/60 hover:text-white transition active:scale-95"
-              aria-label="Delete digit"
-            >
-              <Delete className="w-6 h-6" />
-            </button>
-          </div>
-
-          {/* Forgot PIN button */}
-          <div className="text-center mt-6">
+            {/* Bottom Row: Forgot Passcode / 0 / Delete */}
             <button
               type="button"
               onClick={() => setShowForgotConfirm(true)}
-              className="text-xs text-white/50 hover:text-white transition"
+              className="w-[74px] h-[74px] sm:w-[80px] sm:h-[80px] flex items-center justify-center text-xs font-medium text-app-text-secondary active:opacity-60 transition"
             >
-              Forgot PIN?
+              Forgot?
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleKeyPress('0')}
+              className="w-[74px] h-[74px] sm:w-[80px] sm:h-[80px] rounded-full bg-black/[0.04] dark:bg-white/[0.08] active:bg-black/[0.14] dark:active:bg-white/[0.22] border border-black/[0.06] dark:border-white/[0.09] flex flex-col items-center justify-center transition-all duration-100 active:scale-95 shadow-xs"
+            >
+              <span className="text-[28px] font-normal leading-none text-app-text-primary">
+                0
+              </span>
+              <span className="h-[9px] mt-1" />
+            </button>
+
+            <button
+              type="button"
+              onClick={handleDelete}
+              className="w-[74px] h-[74px] sm:w-[80px] sm:h-[80px] flex items-center justify-center text-app-text-secondary active:opacity-60 transition active:scale-95"
+              aria-label="Delete last digit"
+            >
+              <Delete className="w-6 h-6 stroke-[1.8]" />
             </button>
           </div>
         </div>
 
-        <div className="text-center text-[11px] text-white/30">
-          Device-level privacy shield
+        {/* Subtle Bottom Footer */}
+        <div className="flex items-center justify-center gap-1.5 text-center text-[11px] text-app-text-tertiary font-medium">
+          <ShieldCheck className="w-3.5 h-3.5 text-app-accent" />
+          <span>Biometric & Passcode Security</span>
         </div>
       </div>
 
-      {/* Forgot PIN Confirmation Sheet */}
+      {/* Forgot Passcode Confirmation Sheet */}
       <ConfirmSheet
         isOpen={showForgotConfirm}
-        title="Forgot PIN?"
-        description="Signing out resets the PIN lock on this device. You can sign in again with your account."
-        confirmLabel="Reset PIN & Sign Out"
+        title="Reset Passcode?"
+        description="To protect your privacy, resetting your passcode will log you out of your account on this device. You can then sign in again."
+        confirmLabel="Reset Passcode & Sign Out"
         cancelLabel="Cancel"
         isDestructive={true}
         onConfirm={handleForgotPinConfirm}

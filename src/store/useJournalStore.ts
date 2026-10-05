@@ -60,11 +60,19 @@ export const useJournalStore = create<JournalState>((set, get) => ({
       return () => {};
     }
 
-    // Clean up previous listeners if switching user
+    // Clean up previous listeners and reset store when switching user
     unsubs.forEach((u) => u());
     unsubs = [];
     activeUid = uid;
-    set({ activeUid: uid });
+    searchEngine.clear();
+    set({
+      activeUid: uid,
+      entries: new Map(),
+      folders: new Map(),
+      isLoaded: false,
+      selectedEntryIds: new Set(),
+      isSelectMode: false,
+    });
 
     const getFolderNamesString = (folderIds: string[], currentFolders: Map<string, Folder>) => {
       return (folderIds || [])
@@ -439,17 +447,39 @@ export const useJournalStore = create<JournalState>((set, get) => ({
       deletedAt: null,
     };
 
-    await repository.saveFolder(uid, folder);
+    const nextFolders = new Map(get().folders);
+    nextFolders.set(id, folder);
+    set({ folders: nextFolders });
+
+    try {
+      await repository.saveFolder(uid, folder);
+    } catch (err) {
+      console.warn('saveFolder error:', err);
+    }
   },
 
   deleteFolder: async (folderId: string) => {
     const uid = get().activeUid || 'demo-local-user';
-    await repository.deleteFolder(uid, folderId);
+    const nextFolders = new Map(get().folders);
+    nextFolders.delete(folderId);
+    set({ folders: nextFolders });
+
+    try {
+      await repository.deleteFolder(uid, folderId);
+    } catch (err) {
+      console.warn('deleteFolder error:', err);
+    }
   },
 
   updateSettings: async (newSettings: Partial<UserSettings>) => {
+    const nextSettings = { ...get().settings, ...newSettings };
+    set({ settings: nextSettings });
     const uid = get().activeUid || 'demo-local-user';
-    await repository.saveSettings(uid, newSettings);
+    try {
+      await repository.saveSettings(uid, nextSettings);
+    } catch (err) {
+      console.warn('updateSettings error:', err);
+    }
   },
 
   setSelectMode: (enabled: boolean) => {
