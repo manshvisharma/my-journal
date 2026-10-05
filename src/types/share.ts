@@ -1,4 +1,4 @@
-import type { MoodData, MediaRef } from './index';
+import type { MoodData, MediaRef, LocationData, SongItem } from './index';
 
 export interface ShareDoc {
   id: string; // 12+ char unguessable id
@@ -10,6 +10,8 @@ export interface ShareDoc {
   entryDate: number;
   wordCount: number;
   mood: MoodData | null;
+  location?: LocationData | null;
+  songs?: SongItem[];
   includePhotos: boolean;
   active: boolean;
   createdAt: number;

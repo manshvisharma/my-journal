@@ -8,6 +8,8 @@ import {
   setShareActive as setShareActiveFn,
   upsertPublicShare,
 } from "@/lib/share-api";
+import { doc, getDoc, setDoc, deleteDoc, updateDoc } from "firebase/firestore";
+import { db, isFirebaseConfigured } from "../../data/firebase";
 
 const TOKEN_KEY = "reverie_share_tokens";
 const LOCAL_SHARES_KEY = "reverie_local_shares";
@@ -110,6 +112,8 @@ function asShareDoc(raw: Record<string, unknown> | null): ShareDoc | null {
     entryDate: Number(raw.entryDate || Date.now()),
     wordCount: Number(raw.wordCount || 0),
     mood: (raw.mood as ShareDoc["mood"]) || null,
+    location: (raw.location as ShareDoc["location"]) || null,
+    songs: (raw.songs as ShareDoc["songs"]) || [],
     includePhotos: Boolean(raw.includePhotos),
     active: Boolean(raw.active),
     createdAt: Number(raw.createdAt || Date.now()),
@@ -123,6 +127,22 @@ function asShareDoc(raw: Record<string, unknown> | null): ShareDoc | null {
 
 export const shareRepository = {
   async getShare(shareId: string): Promise<ShareDoc | null> {
+    // 1. Try fetching from Cloud Firestore directly (accessible globally from any browser)
+    if (typeof window !== "undefined" && isFirebaseConfigured() && db) {
+      try {
+        const shareRef = doc(db, "shares", shareId);
+        const snap = await getDoc(shareRef);
+        if (snap.exists()) {
+          const docData = snap.data();
+          const parsed = asShareDoc(docData as Record<string, unknown>);
+          if (parsed) return parsed;
+        }
+      } catch (err) {
+        console.warn("Firestore getShare failed, falling back:", err);
+      }
+    }
+
+    // 2. Try serverless backend
     try {
       const raw = (await getPublicShare({ data: { id: shareId } })) as Record<string, unknown> | null;
       const parsed = asShareDoc(raw);
@@ -130,10 +150,29 @@ export const shareRepository = {
     } catch (err) {
       console.warn("share get failed, using local cache", err);
     }
+
+    // 3. Fallback to local storage (for author's browser)
     return readLocalShares()[shareId]?.share || null;
   },
 
-  async getShareByEntryId(_ownerUid: string, entryId: string): Promise<ShareDoc | null> {
+  async getShareByEntryId(ownerUid: string, entryId: string): Promise<ShareDoc | null> {
+    // Check local shares first for instant lookup
+    const local = Object.values(readLocalShares()).find((row) => row.share.entryId === entryId)?.share;
+    if (local) return local;
+
+    // Check Cloud Firestore
+    if (typeof window !== "undefined" && isFirebaseConfigured() && db) {
+      try {
+        const shareRef = doc(db, "shares", entryId);
+        const snap = await getDoc(shareRef);
+        if (snap.exists()) {
+          return asShareDoc(snap.data() as Record<string, unknown>);
+        }
+      } catch {
+        // Continue
+      }
+    }
+
     try {
       const raw = (await getShareByEntryIdFn({ data: { entryId } })) as Record<string, unknown> | null;
       const parsed = asShareDoc(raw);
@@ -141,7 +180,7 @@ export const shareRepository = {
     } catch (err) {
       console.warn("share lookup failed, using local cache", err);
     }
-    return Object.values(readLocalShares()).find((row) => row.share.entryId === entryId)?.share || null;
+    return null;
   },
 
   async saveShare(shareDocData: ShareDoc, mediaDocs: ShareMediaDoc[] = []): Promise<void> {
@@ -151,7 +190,30 @@ export const shareRepository = {
       full: (m.thumb || m.full || "").slice(0, 220000),
       thumb: (m.thumb || m.full || "").slice(0, 80000),
     }));
+
+    // 1. Write to local browser cache
     writeLocalShare({ share: { ...shareDocData, updatedAt: Date.now() }, media: compactMedia });
+
+    // 2. Write to Cloud Firestore for global multi-browser access
+    if (typeof window !== "undefined" && isFirebaseConfigured() && db) {
+      try {
+        const shareRef = doc(db, "shares", shareDocData.id);
+        await setDoc(
+          shareRef,
+          {
+            ...shareDocData,
+            media: compactMedia,
+            ownerToken,
+            updatedAt: Date.now(),
+          },
+          { merge: true }
+        );
+      } catch (err) {
+        console.warn("Firestore share save warning:", err);
+      }
+    }
+
+    // 3. Background serverless backup
     try {
       await upsertPublicShare({
         data: {
@@ -166,8 +228,8 @@ export const shareRepository = {
             entryDate: shareDocData.entryDate,
             wordCount: shareDocData.wordCount,
             mood: shareDocData.mood,
-            location: (shareDocData as ShareDoc & { location?: unknown }).location ?? null,
-            songs: [],
+            location: shareDocData.location ?? null,
+            songs: shareDocData.songs || [],
             includePhotos: shareDocData.includePhotos,
             active: shareDocData.active,
             createdAt: shareDocData.createdAt,
@@ -188,6 +250,17 @@ export const shareRepository = {
   async setShareActive(shareId: string, active: boolean): Promise<void> {
     const local = readLocalShares()[shareId];
     if (local) writeLocalShare({ ...local, share: { ...local.share, active } });
+
+    // Update in Cloud Firestore
+    if (typeof window !== "undefined" && isFirebaseConfigured() && db) {
+      try {
+        const shareRef = doc(db, "shares", shareId);
+        await updateDoc(shareRef, { active, updatedAt: Date.now() });
+      } catch (err) {
+        console.warn("Firestore share active update warning:", err);
+      }
+    }
+
     try {
       await setShareActiveFn({ data: { id: shareId, ownerToken: tokenFor(shareId), active } });
     } catch (err) {
@@ -204,6 +277,17 @@ export const shareRepository = {
 
   async deleteShare(shareId: string): Promise<void> {
     deleteLocalShare(shareId);
+
+    // Delete from Cloud Firestore
+    if (typeof window !== "undefined" && isFirebaseConfigured() && db) {
+      try {
+        const shareRef = doc(db, "shares", shareId);
+        await deleteDoc(shareRef);
+      } catch (err) {
+        console.warn("Firestore share delete warning:", err);
+      }
+    }
+
     try {
       await deletePublicShare({ data: { id: shareId, ownerToken: tokenFor(shareId) } });
     } catch (err) {
@@ -236,6 +320,22 @@ export const shareRepository = {
   },
 
   async getShareMediaList(shareId: string): Promise<ShareMediaDoc[]> {
+    // 1. Try Cloud Firestore media list
+    if (typeof window !== "undefined" && isFirebaseConfigured() && db) {
+      try {
+        const shareRef = doc(db, "shares", shareId);
+        const snap = await getDoc(shareRef);
+        if (snap.exists()) {
+          const docData = snap.data();
+          if (Array.isArray(docData?.media) && docData.media.length) {
+            return docData.media as ShareMediaDoc[];
+          }
+        }
+      } catch (err) {
+        console.warn("Firestore getShareMediaList warning:", err);
+      }
+    }
+
     try {
       const raw = (await getPublicShare({ data: { id: shareId } })) as { media?: ShareMediaDoc[] } | null;
       if (Array.isArray(raw?.media) && raw.media.length) return raw.media;
@@ -264,6 +364,21 @@ export const shareRepository = {
   },
 
   async recordView(shareId: string, visitor?: { visitorId: string; device?: string; label?: string | null }) {
+    if (typeof window !== "undefined" && isFirebaseConfigured() && db) {
+      try {
+        const shareRef = doc(db, "shares", shareId);
+        const snap = await getDoc(shareRef);
+        if (snap.exists()) {
+          const currentViews = Number(snap.data()?.viewsTotal || 0);
+          await updateDoc(shareRef, {
+            viewsTotal: currentViews + 1,
+            updatedAt: Date.now(),
+          });
+        }
+      } catch (err) {
+        console.warn("Firestore recordView warning:", err);
+      }
+    }
     return recordShareView({ data: { id: shareId, visitor } });
   },
 

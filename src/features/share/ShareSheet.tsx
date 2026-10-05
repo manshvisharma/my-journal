@@ -163,6 +163,8 @@ export const ShareSheet: React.FC<ShareSheetProps> = ({
         entryDate: entry.entryDate,
         wordCount: entry.wordCount || 0,
         mood: includeMood ? entry.mood : null,
+        location: entry.location || null,
+        songs: entry.songs || [],
         includePhotos,
         active: activeState,
         expiresAt,
