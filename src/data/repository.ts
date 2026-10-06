@@ -344,6 +344,14 @@ class Repository {
     return { localCount: localEntryCount, cloudCount: localEntryCount, matches: true, hasPending: false };
   }
 
+  public getDirectEntriesMap(uid: string): Map<string, Entry> {
+    return this.localStore.getDirectEntriesMap(uid);
+  }
+
+  public getDirectFoldersMap(uid: string): Map<string, Folder> {
+    return this.localStore.getDirectFoldersMap(uid);
+  }
+
   public async generateStressTestEntries(uid: string, onProgress?: (p: number, t: number) => void): Promise<number> {
     return this.localStore.generateStressTestEntries(uid, onProgress);
   }

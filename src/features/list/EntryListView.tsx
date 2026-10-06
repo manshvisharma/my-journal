@@ -14,6 +14,7 @@ import {
   Flame,
   Quote,
   Calendar as CalendarIcon,
+  X,
 } from 'lucide-react';
 import { format, isToday, isYesterday } from 'date-fns';
 
@@ -406,14 +407,6 @@ export const EntryListView: React.FC<EntryListViewProps> = ({
           {/* Top Right Action Buttons: Circular Search & ••• */}
           {!isSelectMode ? (
             <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={onNewEntry}
-                className="hidden md:flex circle-btn text-app-accent"
-                aria-label="New entry"
-              >
-                <Plus className="w-5 h-5" />
-              </button>
               <button
                 type="button"
                 onClick={onOpenSearch}

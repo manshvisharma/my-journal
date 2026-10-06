@@ -27,6 +27,7 @@ import {
   Share2,
   Activity,
   MapPin,
+  Edit3,
 } from 'lucide-react';
 
 import type { AttachmentItem, Entry, LocationAttachment, MoodData, SongAttachment, MediaRef } from '../types';
@@ -457,14 +458,10 @@ export const EntryEditorView: React.FC<EntryEditorViewProps> = ({
     toggleBookmark(entry.id);
   };
 
-  const handleDone = async () => {
-    haptics.success();
-    try {
-      await saveCurrentState(true);
-    } catch (err) {
-      console.warn('Error saving state:', err);
-    }
+  const handleDone = () => {
+    haptics.light();
     setIsEditing(false);
+    saveCurrentState(true).catch((err) => console.warn('Error saving state on Done:', err));
     onBack();
   };
 
@@ -744,7 +741,15 @@ export const EntryEditorView: React.FC<EntryEditorViewProps> = ({
             className="w-full text-2xl sm:text-3xl font-bold bg-transparent border-none text-app-text-primary placeholder-app-text-tertiary focus:outline-none mb-3"
           />
         ) : (
-          <h1 className="text-2xl sm:text-3xl font-bold text-app-text-primary mb-3 break-words selectable-text">
+          <h1
+            onClick={() => {
+              setIsEditing(true);
+              setTimeout(() => {
+                titleInputRef.current?.focus();
+              }, 40);
+            }}
+            className="text-2xl sm:text-3xl font-bold text-app-text-primary mb-3 break-words cursor-text selectable-text"
+          >
             {title || <span className="text-app-text-tertiary italic">Untitled Entry</span>}
           </h1>
         )}
@@ -753,7 +758,18 @@ export const EntryEditorView: React.FC<EntryEditorViewProps> = ({
         <div className="h-px w-full bg-app-hairline mb-5" />
 
         {/* Tiptap Rich Text Content */}
-        <div className="selectable-text text-app-text-primary text-[18px] leading-[1.7] min-h-[300px]">
+        <div
+          onClick={() => {
+            if (!isEditing) {
+              setIsEditing(true);
+              editor?.setEditable(true);
+              setTimeout(() => {
+                editor?.commands.focus();
+              }, 40);
+            }
+          }}
+          className="selectable-text text-app-text-primary text-[18px] leading-[1.7] min-h-[300px] cursor-text"
+        >
           <EditorContent editor={editor} />
         </div>
       </div>
@@ -925,6 +941,21 @@ export const EntryEditorView: React.FC<EntryEditorViewProps> = ({
               <span>Entry Options</span>
               <span>{formattedDateShort}</span>
             </div>
+
+            {!isEditing && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMoreMenu(false);
+                  setIsEditing(true);
+                  setTimeout(() => editor?.commands.focus(), 50);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-black/5 dark:hover:bg-white/10 text-sm font-medium transition"
+              >
+                <Edit3 className="w-5 h-5 text-app-accent" />
+                <span>Edit Entry</span>
+              </button>
+            )}
 
             <button
               type="button"

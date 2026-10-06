@@ -44,15 +44,44 @@ interface JournalState {
 let activeUid: string | null = null;
 let unsubs: Array<() => void> = [];
 
+function getInitialCachedData() {
+  if (typeof window === 'undefined') {
+    return {
+      entries: new Map<string, Entry>(),
+      folders: new Map<string, Folder>(),
+      activeUid: null as string | null,
+    };
+  }
+  try {
+    const rawAuth = localStorage.getItem('reverie_auth_user');
+    const uid = rawAuth ? (JSON.parse(rawAuth)?.uid || 'demo-local-user') : 'demo-local-user';
+    const entries = repository.getDirectEntriesMap(uid);
+    const folders = repository.getDirectFoldersMap(uid);
+    return {
+      entries,
+      folders,
+      activeUid: uid,
+    };
+  } catch {
+    return {
+      entries: new Map<string, Entry>(),
+      folders: new Map<string, Folder>(),
+      activeUid: null as string | null,
+    };
+  }
+}
+
+const initialCached = getInitialCachedData();
+
 export const useJournalStore = create<JournalState>((set, get) => ({
-  entries: new Map(),
-  folders: new Map(),
+  entries: initialCached.entries,
+  folders: initialCached.folders,
   settings: getInitialDemoSettings(),
   syncStatus: 'synced',
-  isLoaded: false,
+  isLoaded: initialCached.entries.size > 0 || initialCached.folders.size > 0,
   selectedEntryIds: new Set(),
   isSelectMode: false,
-  activeUid: null,
+  activeUid: initialCached.activeUid,
 
   subscribe: (uid: string) => {
     // If already subscribed to the same uid, reuse existing listener to avoid unnecessary reads
@@ -65,11 +94,26 @@ export const useJournalStore = create<JournalState>((set, get) => ({
     unsubs = [];
     activeUid = uid;
     searchEngine.clear();
+
+    // Populate from local cache immediately so the UI is NEVER blank or wiped
+    const cachedEntries = repository.getDirectEntriesMap(uid);
+    const cachedFolders = repository.getDirectFoldersMap(uid);
+
+    cachedEntries.forEach((entry) => {
+      if (!entry.deletedAt) {
+        const folderNames = (entry.folderIds || [])
+          .map((fId) => cachedFolders.get(fId)?.name || '')
+          .filter(Boolean)
+          .join(' ');
+        searchEngine.indexEntry(entry, folderNames);
+      }
+    });
+
     set({
       activeUid: uid,
-      entries: new Map(),
-      folders: new Map(),
-      isLoaded: false,
+      entries: cachedEntries,
+      folders: cachedFolders,
+      isLoaded: true,
       selectedEntryIds: new Set(),
       isSelectMode: false,
     });

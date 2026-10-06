@@ -254,16 +254,19 @@ export default function JournalApp() {
 
   const isLocked = useLockStore((state) => state.isLocked);
 
+  if (isLocked) {
+    return (
+      <div className="relative h-screen w-screen overflow-hidden bg-app-bg text-app-text-primary flex flex-col font-sans select-none antialiased">
+        <LockScreen />
+      </div>
+    );
+  }
+
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-app-bg text-app-text-primary flex flex-col font-sans select-none antialiased">
       <OfflineIndicator />
 
-      <div
-        className={`flex-1 flex w-full h-full overflow-hidden transition-opacity duration-150 ${
-          isLocked ? "opacity-0 pointer-events-none invisible" : "opacity-100 visible"
-        }`}
-        aria-hidden={isLocked}
-      >
+      <div className="flex-1 flex w-full h-full overflow-hidden">
         {screen === "settings" ? (
           <div className="w-full h-full z-40">
             <SettingsView onBack={() => setScreen("home")} onOpenAuthModal={() => setShowAuthModal(true)} />

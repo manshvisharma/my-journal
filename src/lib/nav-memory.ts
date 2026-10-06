@@ -16,15 +16,21 @@ export function loadLastNav(): LastNavState {
     const raw = localStorage.getItem(KEY);
     if (!raw) return DEFAULT_NAV;
     const parsed = JSON.parse(raw) as Partial<LastNavState>;
-    // Always resolve editor state back to list
-    const screen = parsed.screen === "editor" ? "list" : (parsed.screen || "home");
     const activeView = parsed.activeView || "all";
     const viewTitle = parsed.viewTitle || "All Entries";
-    // If activeView is a folder (not a smart view), start on list screen
-    const smartViews = new Set(["all", "bookmarks", "unsorted", "trash"]);
-    const isFolder = activeView !== "home" && !smartViews.has(activeView);
+
+    // Directly open into list view for the last visited folder or smart view
+    let screen: "home" | "list" | "settings" | "insights" = "list";
+    if (parsed.screen === "home" && (!parsed.activeView || parsed.activeView === "home")) {
+      screen = "home";
+    } else if (parsed.screen === "settings" || parsed.screen === "insights") {
+      screen = parsed.screen;
+    } else {
+      screen = "list";
+    }
+
     return {
-      screen: isFolder ? "list" : screen,
+      screen,
       activeView,
       viewTitle,
       entryId: null,
