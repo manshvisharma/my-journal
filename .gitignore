@@ -37,3 +37,9 @@ dist-ssr
 # Archives
 *.zip
 reverie/
+
+# Local personal files & export data
+journalPdf/
+scripts/apple_journal_export.json
+scratch/
+

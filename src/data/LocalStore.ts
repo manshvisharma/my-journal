@@ -152,10 +152,11 @@ export class LocalStore implements DataStore {
   private persistMedia() {
     if (typeof window === 'undefined') return;
     try {
-      const arr = Array.from(this.mediaMap.values());
+      // Store only the 20 most recent media docs in localStorage to avoid browser QuotaExceededError
+      const arr = Array.from(this.mediaMap.values()).slice(-20);
       localStorage.setItem('reverie_local_media', JSON.stringify(arr));
     } catch (err) {
-      console.warn('Failed to persist media to localStorage', err);
+      console.warn('Failed to persist media to localStorage:', err);
     }
   }
 

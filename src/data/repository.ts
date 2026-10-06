@@ -1,6 +1,6 @@
 import type { Entry, Folder, MediaDoc, SyncStatus, UserSettings } from "../types";
 import type { DataStore, DocChange, Unsubscribe } from "./types";
-import { isFirebaseConfigured, db } from "./firebase";
+import { isFirebaseConfigured, db, auth } from "./firebase";
 import { FirestoreStore } from "./FirestoreStore";
 import { LocalStore } from "./LocalStore";
 
@@ -321,6 +321,7 @@ class Repository {
   private getEffectiveUid(uid?: string): string {
     if (uid && uid !== "demo-local-user") return uid;
     try {
+      if (auth?.currentUser?.uid) return auth.currentUser.uid;
       if (typeof window !== "undefined") {
         const raw = localStorage.getItem("reverie_auth_user");
         if (raw) {
@@ -337,7 +338,11 @@ class Repository {
   public async saveMedia(mediaDoc: MediaDoc, uid?: string): Promise<void> {
     const targetUid = this.getEffectiveUid(uid);
     // 1. Immediately cache locally on this device
-    await this.localStore.saveMedia(targetUid, mediaDoc);
+    try {
+      await this.localStore.saveMedia(targetUid, mediaDoc);
+    } catch (err) {
+      console.warn("LocalStore saveMedia error:", err);
+    }
 
     // 2. Upload to Firestore cloud so all devices (desktop, tablet, web) receive the image
     if (this.firestoreStore && targetUid !== "demo-local-user" && !this.hasPermissionError) {
@@ -352,16 +357,24 @@ class Repository {
   public async getMedia(mediaId: string, uid?: string): Promise<MediaDoc | null> {
     const targetUid = this.getEffectiveUid(uid);
     // 1. Check local device storage first for 0ms retrieval
-    const local = await this.localStore.getMedia(targetUid, mediaId);
-    if (local) return local;
+    try {
+      const local = await this.localStore.getMedia(targetUid, mediaId);
+      if (local && (local.full || local.thumb)) return local;
+    } catch {
+      // ignore
+    }
 
     // 2. If not on local device (e.g. uploaded from smartphone, viewing on desktop), fetch from cloud
     if (this.firestoreStore && targetUid !== "demo-local-user" && !this.hasPermissionError) {
       try {
         const cloudDoc = await this.firestoreStore.getMedia(targetUid, mediaId);
         if (cloudDoc) {
-          // Cache on this device for offline access
-          await this.localStore.saveMedia(targetUid, cloudDoc);
+          // Cache on this device for offline access without letting local failure block return
+          try {
+            await this.localStore.saveMedia(targetUid, cloudDoc);
+          } catch {
+            // ignore local storage quota issues
+          }
           return cloudDoc;
         }
       } catch (err) {

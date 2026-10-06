@@ -264,6 +264,7 @@ export const EntryCard: React.FC<EntryCardProps> = React.memo(
           songs={entry.songs}
           location={entry.location}
           attachmentOrder={entry.attachmentOrder}
+          coverThumb={entry.coverThumb}
           entryDate={entry.entryDate}
           onPhotoClick={(idx) => setActivePhotoViewerIndex(idx)}
         />

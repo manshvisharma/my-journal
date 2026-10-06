@@ -13,7 +13,7 @@ export type CollageTile =
   | { key: string; kind: "location"; location: LocationAttachment };
 
 interface AttachmentCollageProps {
-  entry: Pick<Entry, "mood" | "media" | "songs" | "location" | "attachmentOrder" | "entryDate">;
+  entry: Pick<Entry, "mood" | "media" | "songs" | "location" | "attachmentOrder" | "entryDate"> & { coverThumb?: string | null };
   onPhotoClick?: (index: number) => void;
   onAttachmentClick?: (kind: "mood" | "song" | "location" | "photo", data: any) => void;
   compact?: boolean;
@@ -172,7 +172,7 @@ export const AttachmentCollage: React.FC<AttachmentCollageProps> = ({ entry, onP
 
   const renderPhoto = (tile: CollageTile, extraCount = 0) => {
     if (tile.kind !== "photo") return null;
-    const url = photoUrls.get(tile.mediaId);
+    const url = photoUrls.get(tile.mediaId) || (tile.photoIndex === 0 && entry.coverThumb ? entry.coverThumb : undefined);
     return (
       <button
         key={tile.key}

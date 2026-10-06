@@ -502,7 +502,7 @@ export const EntryEditorView: React.FC<EntryEditorViewProps> = ({
           w: processed.width,
           h: processed.height,
           createdAt: Date.now(),
-        });
+        }, ownerUid);
 
         newMediaRefs.push({
           id: mediaId,

@@ -9,6 +9,7 @@ interface CardMediaCollageProps {
   entryDate: number;
   location?: Entry["location"];
   attachmentOrder?: Entry["attachmentOrder"];
+  coverThumb?: string | null;
   onPhotoClick?: (index: number) => void;
 }
 
@@ -19,6 +20,7 @@ export const CardMediaCollage: React.FC<CardMediaCollageProps> = ({
   entryDate,
   location,
   attachmentOrder,
+  coverThumb,
   onPhotoClick,
 }) => {
   return (
@@ -30,6 +32,7 @@ export const CardMediaCollage: React.FC<CardMediaCollageProps> = ({
         location: location || null,
         attachmentOrder,
         entryDate,
+        coverThumb,
       }}
       onPhotoClick={onPhotoClick}
     />
