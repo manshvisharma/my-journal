@@ -318,16 +318,70 @@ class Repository {
     }
   }
 
+  private getEffectiveUid(uid?: string): string {
+    if (uid && uid !== "demo-local-user") return uid;
+    try {
+      if (typeof window !== "undefined") {
+        const raw = localStorage.getItem("reverie_auth_user");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed?.uid) return parsed.uid;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return uid || "demo-local-user";
+  }
+
   public async saveMedia(mediaDoc: MediaDoc, uid?: string): Promise<void> {
-    await this.localStore.saveMedia(uid || "demo-local-user", mediaDoc);
+    const targetUid = this.getEffectiveUid(uid);
+    // 1. Immediately cache locally on this device
+    await this.localStore.saveMedia(targetUid, mediaDoc);
+
+    // 2. Upload to Firestore cloud so all devices (desktop, tablet, web) receive the image
+    if (this.firestoreStore && targetUid !== "demo-local-user" && !this.hasPermissionError) {
+      try {
+        await this.firestoreStore.saveMedia(targetUid, mediaDoc);
+      } catch (err) {
+        console.warn("Failed to save media to Firestore cloud:", err);
+      }
+    }
   }
 
   public async getMedia(mediaId: string, uid?: string): Promise<MediaDoc | null> {
-    return this.localStore.getMedia(uid || "demo-local-user", mediaId);
+    const targetUid = this.getEffectiveUid(uid);
+    // 1. Check local device storage first for 0ms retrieval
+    const local = await this.localStore.getMedia(targetUid, mediaId);
+    if (local) return local;
+
+    // 2. If not on local device (e.g. uploaded from smartphone, viewing on desktop), fetch from cloud
+    if (this.firestoreStore && targetUid !== "demo-local-user" && !this.hasPermissionError) {
+      try {
+        const cloudDoc = await this.firestoreStore.getMedia(targetUid, mediaId);
+        if (cloudDoc) {
+          // Cache on this device for offline access
+          await this.localStore.saveMedia(targetUid, cloudDoc);
+          return cloudDoc;
+        }
+      } catch (err) {
+        console.warn("Failed to fetch media from Firestore cloud:", err);
+      }
+    }
+
+    return null;
   }
 
   public async deleteMedia(mediaId: string, uid?: string): Promise<void> {
-    await this.localStore.deleteMedia(uid || "demo-local-user", mediaId);
+    const targetUid = this.getEffectiveUid(uid);
+    await this.localStore.deleteMedia(targetUid, mediaId);
+    if (this.firestoreStore && targetUid !== "demo-local-user" && !this.hasPermissionError) {
+      try {
+        await this.firestoreStore.deleteMedia(targetUid, mediaId);
+      } catch (err) {
+        console.warn("Failed to delete media from Firestore cloud:", err);
+      }
+    }
   }
 
   public async verifyCloudCopy(
