@@ -18,9 +18,10 @@ interface AaPopoverProps {
   editor: Editor | null;
   isOpen: boolean;
   onClose: () => void;
+  ignoreRef?: React.RefObject<HTMLElement | null>;
 }
 
-export const AaPopover: React.FC<AaPopoverProps> = ({ editor, isOpen, onClose }) => {
+export const AaPopover: React.FC<AaPopoverProps> = ({ editor, isOpen, onClose, ignoreRef }) => {
   const popoverRef = useRef<HTMLDivElement>(null);
   const [, setTick] = useState(0);
 
@@ -40,6 +41,9 @@ export const AaPopover: React.FC<AaPopoverProps> = ({ editor, isOpen, onClose })
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
+      if (ignoreRef?.current && ignoreRef.current.contains(e.target as Node)) {
+        return;
+      }
       if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
         onClose();
       }
@@ -48,7 +52,7 @@ export const AaPopover: React.FC<AaPopoverProps> = ({ editor, isOpen, onClose })
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, ignoreRef]);
 
   if (!isOpen || !editor) return null;
 

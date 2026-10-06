@@ -214,6 +214,7 @@ export const EntryCard: React.FC<EntryCardProps> = React.memo(
 
     const startLongPress = () => {
       if (isSelectMode || isTrashView) return;
+      haptics.prime();
       movedRef.current = false;
       clearLongPress();
       longPressRef.current = window.setTimeout(() => {
@@ -227,7 +228,11 @@ export const EntryCard: React.FC<EntryCardProps> = React.memo(
       animate(x, 0, { type: "spring", stiffness: 420, damping: 36 });
     };
 
-    const bodyText = entry.plainText || entry.snippet || "";
+    const bodyText = useMemo(() => {
+      const raw = entry.plainText || entry.snippet || "";
+      // Strip redundant blank lines while preserving normal paragraph spacing
+      return raw.replace(/(\r\n|\r|\n){3,}/g, "\n\n").trim();
+    }, [entry.plainText, entry.snippet]);
 
     const cardInner = (
       <div
@@ -264,19 +269,19 @@ export const EntryCard: React.FC<EntryCardProps> = React.memo(
         />
 
         {entry.title ? (
-          <h3 className="text-[17px] font-semibold text-app-text-primary tracking-tight leading-snug mb-1.5">
+          <h3 className="text-[17px] sm:text-[18px] font-semibold text-app-text-primary tracking-tight leading-snug mb-1.5">
             {entry.title}
           </h3>
         ) : null}
 
         <div className="relative">
           {isExpanded ? (
-            <div className="text-[17px] leading-[26px] text-app-text-primary selectable-text whitespace-pre-wrap py-1">
+            <div className="text-[17.5px] sm:text-[18px] leading-[27px] sm:leading-[28px] text-app-text-primary selectable-text whitespace-pre-wrap py-1">
               {bodyText || <span className="text-app-text-tertiary italic">Empty entry</span>}
             </div>
           ) : (
             <div className="relative overflow-hidden">
-              <p className="text-[17px] leading-[26px] text-app-text-primary line-clamp-8 whitespace-pre-wrap">
+              <p className="text-[17.5px] sm:text-[18px] leading-[27px] sm:leading-[28px] text-app-text-primary line-clamp-8 whitespace-pre-wrap">
                 {bodyText || <span className="text-app-text-tertiary italic">No additional text</span>}
               </p>
               {bodyText.length > 180 && (
@@ -414,6 +419,7 @@ export const EntryCard: React.FC<EntryCardProps> = React.memo(
             onPointerUp={clearLongPress}
             onPointerCancel={clearLongPress}
             onDragStart={() => {
+              haptics.prime();
               draggedRef.current = true;
               crossedThresholdRef.current = null;
               clearLongPress();

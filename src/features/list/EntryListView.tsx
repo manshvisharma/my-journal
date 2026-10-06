@@ -46,8 +46,11 @@ interface EntryListViewProps {
   onOpenEntry: (id: string) => void;
   onNewEntry: () => void;
   onOpenSearch: () => void;
+  onOpenInsights?: () => void;
   hideBack?: boolean;
   hideFab?: boolean;
+  selectedDateFilter?: string | null;
+  onClearDateFilter?: () => void;
 }
 
 export const EntryListView: React.FC<EntryListViewProps> = ({
@@ -58,7 +61,10 @@ export const EntryListView: React.FC<EntryListViewProps> = ({
   onOpenEntry,
   onNewEntry,
   onOpenSearch,
+  onOpenInsights,
   hideFab = false,
+  selectedDateFilter,
+  onClearDateFilter,
 }) => {
   const folders = useFoldersList();
   const foldersMap = useMemo(() => {
@@ -125,7 +131,13 @@ export const EntryListView: React.FC<EntryListViewProps> = ({
   const isTrash = smartView === 'trash';
   const isMainView = !folderId && (smartView === 'all' || !smartView);
 
-  const [dateFilter, setDateFilter] = useState<string | null>(null);
+  const [dateFilter, setDateFilter] = useState<string | null>(selectedDateFilter || null);
+
+  React.useEffect(() => {
+    if (selectedDateFilter !== undefined) {
+      setDateFilter(selectedDateFilter);
+    }
+  }, [selectedDateFilter]);
 
   const displayedEntries = useMemo(() => {
     if (!dateFilter) return entries;
@@ -443,7 +455,11 @@ export const EntryListView: React.FC<EntryListViewProps> = ({
             type="button"
             onClick={() => {
               haptics.light();
-              setShowInsightsSheet(true);
+              if (onOpenInsights) {
+                onOpenInsights();
+              } else {
+                setShowInsightsSheet(true);
+              }
             }}
             className="w-full text-left mt-2.5 p-2 sm:p-2.5 rounded-2xl bg-app-card/60 hover:bg-app-card border border-app-card-border/80 transition-all active:scale-[0.99] group cursor-pointer"
             title="View Insights"
@@ -508,6 +524,7 @@ export const EntryListView: React.FC<EntryListViewProps> = ({
               onClick={() => {
                 haptics.selection();
                 setDateFilter(null);
+                onClearDateFilter?.();
               }}
               className="p-1 rounded-full hover:bg-black/10 dark:hover:bg-white/10 text-app-accent"
               title="Clear date filter"

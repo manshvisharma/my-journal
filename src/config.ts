@@ -1,4 +1,4 @@
-export const APP_NAME = 'Reverie';
+export const APP_NAME = 'Journal';
 
 export const CONFIG = {
   appName: APP_NAME,

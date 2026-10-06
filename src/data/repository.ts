@@ -33,7 +33,21 @@ class Repository {
     onChanges: (changes: DocChange<Entry>[], isFromCache: boolean, hasPendingWrites: boolean) => void,
     onError?: (error: Error) => void,
   ): Unsubscribe {
-    // If Firestore is available and no permission error has occurred yet
+    // 1. Immediately emit local cache so the app opens in 0ms
+    try {
+      const localMap = this.localStore.getDirectEntriesMap(uid);
+      if (localMap.size > 0) {
+        const localChanges: DocChange<Entry>[] = Array.from(localMap.values()).map((doc) => ({
+          type: "added",
+          doc,
+        }));
+        onChanges(localChanges, true, false);
+      }
+    } catch (e) {
+      console.warn("Failed to read initial local entries:", e);
+    }
+
+    // 2. If Firestore is available, connect in background to stream updates
     if (this.firestoreStore && uid && uid !== "demo-local-user" && !this.hasPermissionError) {
       let localUnsub: Unsubscribe | null = null;
       let active = true;
@@ -42,6 +56,14 @@ class Repository {
         uid,
         (changes, isFromCache, hasPendingWrites) => {
           if (active) {
+            // Persist remote changes to localStore for instant open next time
+            changes.forEach((c) => {
+              if (c.type === "removed") {
+                this.localStore.deletePermanently(uid, c.doc.id).catch(console.warn);
+              } else {
+                this.localStore.saveEntryDirect(uid, c.doc);
+              }
+            });
             onChanges(changes, isFromCache, hasPendingWrites);
           }
         },
@@ -73,6 +95,20 @@ class Repository {
     onChanges: (changes: DocChange<Folder>[]) => void,
     onError?: (error: Error) => void,
   ): Unsubscribe {
+    // 1. Immediately emit local folders
+    try {
+      const localMap = this.localStore.getDirectFoldersMap(uid);
+      if (localMap.size > 0) {
+        const localChanges: DocChange<Folder>[] = Array.from(localMap.values()).map((doc) => ({
+          type: "added",
+          doc,
+        }));
+        onChanges(localChanges);
+      }
+    } catch (e) {
+      console.warn("Failed to read initial local folders:", e);
+    }
+
     if (this.firestoreStore && uid && uid !== "demo-local-user" && !this.hasPermissionError) {
       let localUnsub: Unsubscribe | null = null;
       let active = true;
@@ -80,7 +116,16 @@ class Repository {
       const firestoreUnsub = this.firestoreStore.subscribeFolders(
         uid,
         (changes) => {
-          if (active) onChanges(changes);
+          if (active) {
+            changes.forEach((c) => {
+              if (c.type === "removed") {
+                this.localStore.deleteFolder(c.doc.id).catch(console.warn);
+              } else {
+                this.localStore.saveFolderDirect(uid, c.doc);
+              }
+            });
+            onChanges(changes);
+          }
         },
         (err) => {
           console.warn("Firestore folders subscription error, falling back to local storage:", err.message);
@@ -109,6 +154,16 @@ class Repository {
     onUpdate: (settings: UserSettings | null) => void,
     onError?: (error: Error) => void,
   ): Unsubscribe {
+    // 1. Immediately emit local settings
+    try {
+      const localSettings = this.localStore.getDirectSettings(uid);
+      if (localSettings) {
+        onUpdate(localSettings);
+      }
+    } catch (e) {
+      console.warn("Failed to read initial local settings:", e);
+    }
+
     if (this.firestoreStore && uid && uid !== "demo-local-user" && !this.hasPermissionError) {
       let localUnsub: Unsubscribe | null = null;
       let active = true;

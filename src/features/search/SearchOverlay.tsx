@@ -142,7 +142,7 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ onSelectEntry }) =
   const addRecentSearch = useSearchStore((state) => state.addRecentSearch);
   const clearRecentSearches = useSearchStore((state) => state.clearRecentSearches);
 
-  const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
+  const [activeCategoryIds, setActiveCategoryIds] = useState<Set<string>>(new Set());
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Focus input on open
@@ -150,9 +150,10 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ onSelectEntry }) =
     if (isOpen) {
       setTimeout(() => inputRef.current?.focus(), 80);
     } else {
-      setActiveCategoryId(null);
+      setActiveCategoryIds(new Set());
+      clearFilters();
     }
-  }, [isOpen]);
+  }, [isOpen, clearFilters]);
 
   // Keyboard shortcut listener (Cmd/Ctrl+K and Escape)
   useEffect(() => {
@@ -178,7 +179,7 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ onSelectEntry }) =
   const handleClose = () => {
     haptics.selection();
     clearFilters();
-    setActiveCategoryId(null);
+    setActiveCategoryIds(new Set());
     closeSearch();
   };
 
@@ -188,7 +189,7 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ onSelectEntry }) =
       addRecentSearch(query);
     }
     clearFilters();
-    setActiveCategoryId(null);
+    setActiveCategoryIds(new Set());
     closeSearch();
     onSelectEntry(id);
   };
@@ -198,22 +199,24 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ onSelectEntry }) =
     setQuery(term);
   };
 
-  const handleSelectCategory = (cat: CategoryItem) => {
+  const handleToggleCategory = (cat: CategoryItem) => {
     haptics.selection();
-    if (activeCategoryId === cat.id) {
-      // Toggle off
-      setActiveCategoryId(null);
-      clearFilters();
-    } else {
-      setActiveCategoryId(cat.id);
-      clearFilters();
-      setFilter(cat.filterKey, cat.filterValue);
-    }
+    setActiveCategoryIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(cat.id)) {
+        next.delete(cat.id);
+        setFilter(cat.filterKey, undefined);
+      } else {
+        next.add(cat.id);
+        setFilter(cat.filterKey, cat.filterValue);
+      }
+      return next;
+    });
   };
 
-  const handleClearCategory = () => {
+  const handleClearAllCategories = () => {
     haptics.selection();
-    setActiveCategoryId(null);
+    setActiveCategoryIds(new Set());
     clearFilters();
   };
 
@@ -250,8 +253,7 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ onSelectEntry }) =
     }
   };
 
-  const hasSearchOrFilter = Boolean(query.trim() || activeCategoryId);
-  const activeCategory = CATEGORIES.find((c) => c.id === activeCategoryId);
+  const hasSearchOrFilter = Boolean(query.trim() || activeCategoryIds.size > 0);
 
   return (
     <div className="fixed inset-0 z-50 bg-[#FFFFFF] dark:bg-[#0B0813] text-black dark:text-white flex flex-col font-[-apple-system,BlinkMacSystemFont,'SF_Pro_Text','SF_Pro_Display',system-ui,sans-serif] select-none">
@@ -301,29 +303,38 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ onSelectEntry }) =
           </button>
         </div>
 
-        {/* Active Category Filter Tag if selected */}
-        {activeCategory && (
-          <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-[#E5E5EA]/50 dark:border-[#221F2E]">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#5E5CE6]/12 dark:bg-[#7D7AFF]/18 text-[#5E5CE6] dark:text-[#7D7AFF] text-[13px] font-medium">
-              <span className="shrink-0">{activeCategory.icon}</span>
-              <span>{activeCategory.label}</span>
-              <button
-                type="button"
-                onClick={handleClearCategory}
-                className="ml-1 p-0.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10"
-              >
-                <X className="w-3 h-3 stroke-[2.5]" />
-              </button>
-            </div>
+        {/* Horizontal Scrollable Filter Chips row — always visible and combinable */}
+        <div className="flex items-center gap-2 overflow-x-auto scrollbar-none pt-2.5 pb-0.5">
+          {activeCategoryIds.size > 0 && (
             <button
               type="button"
-              onClick={handleClearCategory}
-              className="text-[14px] text-[#5E5CE6] dark:text-[#7D7AFF] font-medium"
+              onClick={handleClearAllCategories}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-semibold bg-black/10 dark:bg-white/10 text-neutral-600 dark:text-neutral-300 shrink-0"
             >
-              Clear Category
+              <X className="w-3 h-3 stroke-[2.5]" />
+              <span>Clear ({activeCategoryIds.size})</span>
             </button>
-          </div>
-        )}
+          )}
+          {CATEGORIES.map((cat) => {
+            const isSelected = activeCategoryIds.has(cat.id);
+            return (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => handleToggleCategory(cat)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium transition-all shrink-0 active:scale-95 ${
+                  isSelected
+                    ? "bg-[#5E5CE6] text-white shadow-sm ring-1 ring-[#5E5CE6]"
+                    : "bg-[#E5E5EA]/70 dark:bg-[#1C1926] text-black dark:text-white/80 hover:bg-[#E5E5EA] dark:hover:bg-[#252233]"
+                }`}
+              >
+                <span className="shrink-0">{cat.icon}</span>
+                <span>{cat.label}</span>
+                {isSelected && <X className="w-3 h-3 ml-0.5 stroke-[2.5]" />}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Body Content */}
@@ -375,21 +386,31 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ onSelectEntry }) =
               </div>
 
               <div className="flex flex-col">
-                {CATEGORIES.map((cat) => (
-                  <button
-                    key={cat.id}
-                    type="button"
-                    onClick={() => handleSelectCategory(cat)}
-                    className="w-full flex items-center py-3.5 border-b border-[#E5E5EA]/80 dark:border-[#221F2E] active:bg-black/5 dark:active:bg-white/5 transition-colors text-left"
-                  >
-                    <span className="w-5 h-5 text-black dark:text-white mr-3.5 shrink-0 flex items-center justify-center">
-                      {cat.icon}
-                    </span>
-                    <span className="text-[17px] font-normal text-black dark:text-white">
-                      {cat.label}
-                    </span>
-                  </button>
-                ))}
+                {CATEGORIES.map((cat) => {
+                  const isSelected = activeCategoryIds.has(cat.id);
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => handleToggleCategory(cat)}
+                      className={`w-full flex items-center justify-between py-3.5 border-b border-[#E5E5EA]/80 dark:border-[#221F2E] active:bg-black/5 dark:active:bg-white/5 transition-colors text-left ${
+                        isSelected ? 'text-[#5E5CE6] dark:text-[#7D7AFF] font-medium' : ''
+                      }`}
+                    >
+                      <div className="flex items-center">
+                        <span className="w-5 h-5 mr-3.5 shrink-0 flex items-center justify-center">
+                          {cat.icon}
+                        </span>
+                        <span className="text-[17px] font-normal">
+                          {cat.label}
+                        </span>
+                      </div>
+                      {isSelected && (
+                        <span className="w-2 h-2 rounded-full bg-[#5E5CE6] dark:bg-[#7D7AFF]" />
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>

@@ -14,27 +14,36 @@ let iosSwitchInput: HTMLInputElement | null = null;
 let isSwitchSetup = false;
 let audioCtx: AudioContext | null = null;
 
-// Ensure audio context is ready on first touch/click
-if (typeof window !== 'undefined') {
-  const unlockAudio = () => {
-    try {
-      const AudioContextClass =
-        window.AudioContext ||
-        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      if (AudioContextClass && !audioCtx) {
-        audioCtx = new AudioContextClass();
-      }
-      if (audioCtx && audioCtx.state === 'suspended') {
+export function primeHaptics() {
+  try {
+    if (typeof window === 'undefined') return;
+    const AudioContextClass =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (AudioContextClass && !audioCtx) {
+      audioCtx = new AudioContextClass();
+    }
+    if (audioCtx) {
+      if (audioCtx.state === 'suspended') {
         audioCtx.resume();
       }
-    } catch {
-      // Ignore
+      // Play a 1-sample silent buffer to keep it alive
+      const buf = audioCtx.createBuffer(1, 1, 22050);
+      const src = audioCtx.createBufferSource();
+      src.buffer = buf;
+      src.connect(audioCtx.destination);
+      src.start(0);
     }
-  };
+  } catch {
+    // Ignore
+  }
+}
 
-  window.addEventListener('touchstart', unlockAudio, { passive: true, once: true });
-  window.addEventListener('pointerdown', unlockAudio, { passive: true, once: true });
-  window.addEventListener('click', unlockAudio, { passive: true, once: true });
+// Keep audio context primed on touches
+if (typeof window !== 'undefined') {
+  window.addEventListener('touchstart', primeHaptics, { passive: true });
+  window.addEventListener('pointerdown', primeHaptics, { passive: true });
+  window.addEventListener('click', primeHaptics, { passive: true });
 }
 
 function setupIosSwitchHaptic() {
@@ -77,29 +86,31 @@ function setupIosSwitchHaptic() {
   }
 }
 
-function playMicroTick(duration = 0.008, freq = 120, gainValue = 0.08) {
+function playTactileClick(type: 'light' | 'medium' | 'heavy' | 'selection' | 'warning') {
   try {
     if (typeof window === 'undefined') return;
-    const AudioContextClass =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextClass) return;
-    if (!audioCtx) {
-      audioCtx = new AudioContextClass();
+    primeHaptics();
+    if (!audioCtx) return;
+
+    const sampleRate = audioCtx.sampleRate;
+    const duration = type === 'heavy' ? 0.024 : type === 'medium' || type === 'warning' ? 0.016 : 0.010;
+    const numSamples = Math.floor(sampleRate * duration);
+    const buffer = audioCtx.createBuffer(1, numSamples, sampleRate);
+    const data = buffer.getChannelData(0);
+
+    const freq = type === 'heavy' ? 60 : type === 'medium' || type === 'warning' ? 85 : type === 'selection' ? 150 : 110;
+    const amplitude = type === 'heavy' ? 0.45 : type === 'medium' || type === 'warning' ? 0.35 : 0.22;
+
+    for (let i = 0; i < numSamples; i++) {
+      const t = i / sampleRate;
+      const decay = Math.exp(-t * (type === 'heavy' ? 70 : 130));
+      data[i] = Math.sin(2 * Math.PI * freq * t) * amplitude * decay;
     }
-    if (audioCtx.state === 'suspended') {
-      audioCtx.resume();
-    }
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-    gain.gain.setValueAtTime(gainValue, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    osc.start();
-    osc.stop(audioCtx.currentTime + duration);
+
+    const source = audioCtx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(audioCtx.destination);
+    source.start(audioCtx.currentTime);
   } catch {
     // Ignore audio errors
   }
@@ -136,6 +147,8 @@ function triggerNativeIos(): void {
 }
 
 export const haptics = {
+  prime: primeHaptics,
+
   selection: () => {
     if (!isHapticsEnabled()) return;
     triggerNativeIos();
@@ -146,7 +159,7 @@ export const haptics = {
     } catch {
       // ignore
     }
-    playMicroTick(0.006, 180, 0.07);
+    playTactileClick('selection');
   },
 
   light: () => {
@@ -159,7 +172,7 @@ export const haptics = {
     } catch {
       // ignore
     }
-    playMicroTick(0.008, 140, 0.08);
+    playTactileClick('light');
   },
 
   medium: () => {
@@ -172,11 +185,7 @@ export const haptics = {
     } catch {
       // ignore
     }
-    playMicroTick(0.012, 100, 0.11);
-    setTimeout(() => {
-      triggerNativeIos();
-      playMicroTick(0.010, 80, 0.09);
-    }, 45);
+    playTactileClick('medium');
   },
 
   heavy: () => {
@@ -189,11 +198,7 @@ export const haptics = {
     } catch {
       // ignore
     }
-    playMicroTick(0.02, 70, 0.14);
-    setTimeout(() => {
-      triggerNativeIos();
-      playMicroTick(0.018, 65, 0.12);
-    }, 55);
+    playTactileClick('heavy');
   },
 
   warning: () => {
@@ -206,7 +211,7 @@ export const haptics = {
     } catch {
       // ignore
     }
-    playMicroTick(0.02, 65, 0.13);
+    playTactileClick('warning');
   },
 
   success: () => {
@@ -219,10 +224,10 @@ export const haptics = {
     } catch {
       // ignore
     }
-    playMicroTick(0.012, 160, 0.09);
+    playTactileClick('light');
     setTimeout(() => {
       triggerNativeIos();
-      playMicroTick(0.02, 280, 0.12);
+      playTactileClick('medium');
     }, 60);
   },
 
@@ -236,10 +241,10 @@ export const haptics = {
     } catch {
       // ignore
     }
-    playMicroTick(0.025, 55, 0.15);
+    playTactileClick('heavy');
     setTimeout(() => {
       triggerNativeIos();
-      playMicroTick(0.025, 50, 0.15);
+      playTactileClick('heavy');
     }, 80);
   },
 };

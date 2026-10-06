@@ -131,10 +131,31 @@ export const EntryEditorView: React.FC<EntryEditorViewProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const aaButtonRef = useRef<HTMLButtonElement>(null);
+  const plusButtonRef = useRef<HTMLButtonElement>(null);
   const autosaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isDirtyRef = useRef(false);
   const viewportBottomOffsetRef = useRef(0);
   const [viewportBottomOffset, setViewportBottomOffset] = useState(0);
+
+  const closeAllToolbars = useCallback(() => {
+    setShowAaPopover(false);
+    setShowInsertMenu(false);
+  }, []);
+
+  const toggleAa = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    haptics.light();
+    setShowInsertMenu(false);
+    setShowAaPopover((prev) => !prev);
+  }, []);
+
+  const togglePlus = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    haptics.light();
+    setShowAaPopover(false);
+    setShowInsertMenu((prev) => !prev);
+  }, []);
 
   // Visual viewport handling for iOS keyboard
   useEffect(() => {
@@ -142,7 +163,7 @@ export const EntryEditorView: React.FC<EntryEditorViewProps> = ({
       const vv = window.visualViewport;
       if (vv) {
         // True keyboard offset from bottom of window
-        const offset = Math.max(0, window.innerHeight - (vv.offsetTop + vv.height));
+        const offset = Math.max(0, Math.round(window.innerHeight - vv.height - (vv.offsetTop || 0)));
         viewportBottomOffsetRef.current = offset;
         setViewportBottomOffset(offset);
       }
@@ -229,6 +250,7 @@ export const EntryEditorView: React.FC<EntryEditorViewProps> = ({
     ],
     content: initialContent as string | Record<string, unknown>,
     onUpdate: () => {
+      closeAllToolbars();
       isDirtyRef.current = true;
       scheduleAutosave();
 
@@ -238,6 +260,9 @@ export const EntryEditorView: React.FC<EntryEditorViewProps> = ({
         const text = editor.getText();
         draftBuffer.saveDraft(entry.id, title, json, text);
       }
+    },
+    onFocus: () => {
+      closeAllToolbars();
     },
   });
 
@@ -429,9 +454,13 @@ export const EntryEditorView: React.FC<EntryEditorViewProps> = ({
     setIsEditing(false);
   };
 
-  const handleBackClick = async () => {
+  const handleBackClick = () => {
     haptics.light();
-    await saveCurrentState(true);
+    try {
+      saveCurrentState(true).catch((err) => console.error('Error saving on exit:', err));
+    } catch (err) {
+      console.error('Error saving on exit:', err);
+    }
     onBack();
   };
 
@@ -696,6 +725,7 @@ export const EntryEditorView: React.FC<EntryEditorViewProps> = ({
             type="text"
             value={title}
             onChange={(e) => {
+              closeAllToolbars();
               setTitle(e.target.value);
               isDirtyRef.current = true;
               scheduleAutosave();
@@ -725,7 +755,7 @@ export const EntryEditorView: React.FC<EntryEditorViewProps> = ({
         <div className="h-px w-full bg-app-hairline mb-5" />
 
         {/* Tiptap Rich Text Content */}
-        <div className="selectable-text text-app-text-primary text-lg leading-relaxed min-h-[300px]">
+        <div className="selectable-text text-app-text-primary text-[18px] leading-[1.7] min-h-[300px]">
           <EditorContent editor={editor} />
         </div>
       </div>
@@ -747,7 +777,7 @@ export const EntryEditorView: React.FC<EntryEditorViewProps> = ({
             bottom:
               viewportBottomOffset > 10
                 ? `${viewportBottomOffset + 12}px`
-                : 'calc(1rem + env(safe-area-inset-bottom, 12px))',
+                : 'calc(1.25rem + env(safe-area-inset-bottom, 12px))',
           }}
           className="fixed sm:absolute left-1/2 -translate-x-1/2 z-50 transition-all duration-100"
         >
@@ -783,11 +813,9 @@ export const EntryEditorView: React.FC<EntryEditorViewProps> = ({
             {/* Aa Formatting pill button */}
             <div className="relative">
               <button
+                ref={aaButtonRef}
                 type="button"
-                onClick={() => {
-                  haptics.light();
-                  setShowAaPopover((prev) => !prev);
-                }}
+                onClick={toggleAa}
                 className={`px-3 py-1.5 rounded-full text-sm font-semibold transition ${
                   showAaPopover ? 'bg-app-accent text-white' : 'hover:bg-black/5 dark:hover:bg-white/10 text-app-text-primary'
                 }`}
@@ -798,17 +826,16 @@ export const EntryEditorView: React.FC<EntryEditorViewProps> = ({
                 editor={editor}
                 isOpen={showAaPopover}
                 onClose={() => setShowAaPopover(false)}
+                ignoreRef={aaButtonRef}
               />
             </div>
 
             {/* Insert (+) button */}
             <div className="relative">
               <button
+                ref={plusButtonRef}
                 type="button"
-                onClick={() => {
-                  haptics.light();
-                  setShowInsertMenu((prev) => !prev);
-                }}
+                onClick={togglePlus}
                 className={`p-2.5 rounded-full transition ${
                   showInsertMenu ? 'bg-app-accent text-white' : 'hover:bg-black/5 dark:hover:bg-white/10 text-app-text-primary'
                 }`}

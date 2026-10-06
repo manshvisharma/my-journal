@@ -9,6 +9,7 @@ import { EntryListView } from "./features/list/EntryListView";
 import { EntryEditorView } from "./editor/EntryEditorView";
 import { SettingsView } from "./features/settings/SettingsView";
 import { InsightsView } from "./features/insights/InsightsView";
+import { InsightsSheet } from "./features/insights/InsightsSheet";
 import { SearchOverlay } from "./features/search/SearchOverlay";
 import { LockScreen } from "./features/lock/LockScreen";
 import { AuthModal } from "./features/auth/AuthModal";
@@ -28,6 +29,9 @@ export default function JournalApp() {
   const theme = useJournalStore((state) => state.settings.theme || "system");
 
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [isInsightsOpen, setIsInsightsOpen] = useState(false);
+  const [selectedDateFilter, setSelectedDateFilter] = useState<string | null>(null);
+  const [newDraftEntry, setNewDraftEntry] = useState<Entry | null>(null);
 
   const initialNav = useMemo(() => loadLastNav(), []);
   const [screen, setScreen] = useState<NavScreen>(initialNav.screen === "editor" ? "list" : initialNav.screen);
@@ -87,7 +91,9 @@ export default function JournalApp() {
   }, [screen, activeView, viewTitle, sidebarCollapsed]);
 
   const activeEntry: Entry | undefined = useJournalStore((state) =>
-    activeEntryId ? state.entries.get(activeEntryId) : undefined,
+    activeEntryId
+      ? (newDraftEntry && newDraftEntry.id === activeEntryId ? newDraftEntry : state.entries.get(activeEntryId))
+      : undefined,
   );
 
   const { smartView, folderId } = useMemo(() => {
@@ -103,11 +109,12 @@ export default function JournalApp() {
     setActiveView(view);
     setViewTitle(title);
     setScreen("list");
+    setNewDraftEntry(null);
     setActiveEntryId(null);
     setIsNewEntryMode(false);
   };
 
-  const handleNewEntry = async () => {
+  const handleNewEntry = () => {
     if (!user) {
       haptics.warning();
       toast.info("Please sign in or create an account to start journaling");
@@ -144,7 +151,8 @@ export default function JournalApp() {
       importKey: null,
       schemaVersion: 1,
     };
-    await useJournalStore.getState().saveEntry(newDraft);
+    // Open editor immediately in 0ms! Do not await or pre-save empty entry
+    setNewDraftEntry(newDraft);
     setActiveEntryId(newId);
     setIsNewEntryMode(true);
     setScreen("editor");
@@ -152,12 +160,14 @@ export default function JournalApp() {
 
   const handleOpenEntry = (id: string) => {
     haptics.light();
+    setNewDraftEntry(null);
     setActiveEntryId(id);
     setIsNewEntryMode(false);
     setScreen("editor");
   };
 
   const handleBackFromEditor = () => {
+    setNewDraftEntry(null);
     setActiveEntryId(null);
     setIsNewEntryMode(false);
     setScreen("list");
@@ -168,12 +178,14 @@ export default function JournalApp() {
     const handlePopState = (e: PopStateEvent) => {
       // The user pressed back.
       if (screen === "editor") {
+        setNewDraftEntry(null);
         setActiveEntryId(null);
         setIsNewEntryMode(false);
         setScreen("list");
       } else if (screen === "list") {
         setScreen("home");
       } else if (screen === "settings" || screen === "insights") {
+        setIsInsightsOpen(false);
         setScreen("home");
       }
       
@@ -217,7 +229,8 @@ export default function JournalApp() {
           <div className="w-full h-full z-40">
             <InsightsView
               onBack={() => setScreen("home")}
-              onSelectDateFilter={() => {
+              onSelectDateFilter={(dateKey) => {
+                setSelectedDateFilter(dateKey);
                 setActiveView("all");
                 setViewTitle("All Entries");
                 setScreen("list");
@@ -246,7 +259,7 @@ export default function JournalApp() {
                   setScreen("list");
                   useJournalStore.getState().setSelectMode(true);
                 }}
-                onOpenInsights={() => setScreen("insights")}
+                onOpenInsights={() => setIsInsightsOpen(true)}
                 hideFab={false}
               />
             </aside>
@@ -271,8 +284,11 @@ export default function JournalApp() {
                   onOpenEntry={handleOpenEntry}
                   onNewEntry={handleNewEntry}
                   onOpenSearch={openSearch}
+                  onOpenInsights={() => setIsInsightsOpen(true)}
                   hideBack={false}
                   hideFab={screen === "editor"}
+                  selectedDateFilter={selectedDateFilter}
+                  onClearDateFilter={() => setSelectedDateFilter(null)}
                 />
               ) : null}
             </section>
@@ -288,6 +304,11 @@ export default function JournalApp() {
                   entry={activeEntry}
                   initialEditMode={isNewEntryMode}
                   onBack={handleBackFromEditor}
+                  onEntryUpdated={(updated) => {
+                    if (newDraftEntry?.id === updated.id) {
+                      setNewDraftEntry(null);
+                    }
+                  }}
                 />
               ) : screen === "editor" ? (
                 <div className="flex flex-col items-center justify-center w-full h-full text-app-text-tertiary p-8">
@@ -328,6 +349,17 @@ export default function JournalApp() {
       </button>
       )}
 
+      <InsightsSheet
+        isOpen={isInsightsOpen}
+        onClose={() => setIsInsightsOpen(false)}
+        onSelectDateFilter={(dateKey) => {
+          setIsInsightsOpen(false);
+          setSelectedDateFilter(dateKey);
+          setActiveView("all");
+          setViewTitle("All Entries");
+          setScreen("list");
+        }}
+      />
       <SearchOverlay onSelectEntry={handleOpenEntry} />
       <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
       <LockScreen />

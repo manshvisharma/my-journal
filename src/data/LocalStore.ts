@@ -159,6 +159,30 @@ export class LocalStore implements DataStore {
     }
   }
 
+  public getDirectEntriesMap(uid: string): Map<string, Entry> {
+    return this.getEntriesMap(uid);
+  }
+
+  public getDirectFoldersMap(uid: string): Map<string, Folder> {
+    return this.getFoldersMap(uid);
+  }
+
+  public getDirectSettings(uid: string): UserSettings {
+    return this.getSettings(uid);
+  }
+
+  public saveEntryDirect(uid: string, entry: Entry): void {
+    const map = this.getEntriesMap(uid);
+    map.set(entry.id, entry);
+    this.persistEntries(uid);
+  }
+
+  public saveFolderDirect(uid: string, folder: Folder): void {
+    const map = this.getFoldersMap(uid);
+    map.set(folder.id, folder);
+    this.persistFolders(uid);
+  }
+
   public subscribeEntries(
     uid: string,
     onChanges: (changes: DocChange<Entry>[], isFromCache: boolean, hasPendingWrites: boolean) => void

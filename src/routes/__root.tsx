@@ -3,7 +3,7 @@ import { AuthProvider } from "@/lib/auth/provider";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
 import appCss from "../styles.css?url";
 
-const APP_NAME = "Reverie";
+const APP_NAME = "Journal";
 const THEME_BOOTSTRAP = `(function(){try{var s=JSON.parse(localStorage.getItem("reverie_local_settings")||"{}");var t=s.theme||"system";var dark=t==="dark"||(t!=="light"&&window.matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.classList.add(dark?"dark":"light");document.documentElement.classList.remove(dark?"light":"dark");}catch(e){document.documentElement.classList.add("dark");}})();`;
 
 export const Route = createRootRoute({
