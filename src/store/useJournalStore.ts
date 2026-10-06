@@ -204,7 +204,7 @@ export const useJournalStore = create<JournalState>((set, get) => ({
     const entry = get().entries.get(id);
     if (!entry) return;
 
-    // Soft delete: clear pinned/pinnedAt (frees the pin slot), keep bookmarked untouched but hidden
+    // Optimistically update local entries map in 0ms
     const updated: Entry = {
       ...entry,
       deletedAt: Date.now(),
@@ -212,7 +212,12 @@ export const useJournalStore = create<JournalState>((set, get) => ({
       pinnedAt: null,
       updatedAt: Date.now(),
     };
-    await repository.saveEntry(uid, updated);
+    const nextEntries = new Map(get().entries);
+    nextEntries.set(id, updated);
+    set({ entries: nextEntries });
+    searchEngine.removeEntry(id);
+
+    repository.saveEntry(uid, updated).catch(console.warn);
 
     // Requirement #1: Soft-deleting an entry immediately deactivates its share link
     shareRepository.getShareByEntryId(uid, id).then((share) => {
@@ -228,28 +233,41 @@ export const useJournalStore = create<JournalState>((set, get) => ({
     if (!entry) return;
 
     const currentFolders = get().folders;
-    // Check if entry's folders still exist; if deleted, restore into default Journal
     const validFolderIds = (entry.folderIds || []).filter(
       (fId) => currentFolders.has(fId) && !currentFolders.get(fId)?.deletedAt
     );
     const finalFolderIds = validFolderIds.length > 0 ? validFolderIds : [CONFIG.defaultFolderId];
 
+    // Optimistically restore in local store in 0ms
     const updated: Entry = {
       ...entry,
       deletedAt: null,
       folderIds: finalFolderIds,
       updatedAt: Date.now(),
     };
-    await repository.saveEntry(uid, updated);
-    // Restoring from trash does NOT re-activate sharing automatically
+    const nextEntries = new Map(get().entries);
+    nextEntries.set(id, updated);
+    set({ entries: nextEntries });
+
+    const folderNames = finalFolderIds
+      .map((fId) => currentFolders.get(fId)?.name || '')
+      .filter(Boolean)
+      .join(' ');
+    searchEngine.indexEntry(updated, folderNames);
+
+    repository.saveEntry(uid, updated).catch(console.warn);
   },
 
   deleteEntryPermanently: async (id: string) => {
     const uid = get().activeUid || 'demo-local-user';
-    await repository.deletePermanently(uid, id);
+    // Optimistically remove from local store in 0ms
+    const nextEntries = new Map(get().entries);
+    nextEntries.delete(id);
+    set({ entries: nextEntries });
     searchEngine.removeEntry(id);
 
-    // Permanently deleting an entry removes the share doc, media and stats
+    repository.deletePermanently(uid, id).catch(console.warn);
+
     shareRepository.getShareByEntryId(uid, id).then((share) => {
       if (share) {
         shareRepository.deleteShare(share.id).catch(console.warn);
@@ -260,26 +278,42 @@ export const useJournalStore = create<JournalState>((set, get) => ({
   purgeTrash: async () => {
     const uid = get().activeUid || 'demo-local-user';
     const entries = get().entries;
-    for (const entry of entries.values()) {
+    const nextEntries = new Map(entries);
+    const idsToDelete: string[] = [];
+
+    for (const [id, entry] of entries.entries()) {
       if (entry.deletedAt) {
-        await repository.deletePermanently(uid, entry.id);
-        searchEngine.removeEntry(entry.id);
-        shareRepository.getShareByEntryId(uid, entry.id).then((share) => {
-          if (share) shareRepository.deleteShare(share.id).catch(console.warn);
-        }).catch(console.warn);
+        nextEntries.delete(id);
+        idsToDelete.push(id);
+        searchEngine.removeEntry(id);
       }
     }
+    set({ entries: nextEntries });
+
+    idsToDelete.forEach((id) => {
+      repository.deletePermanently(uid, id).catch(console.warn);
+      shareRepository.getShareByEntryId(uid, id).then((share) => {
+        if (share) shareRepository.deleteShare(share.id).catch(console.warn);
+      }).catch(console.warn);
+    });
   },
 
   toggleBookmark: async (id: string) => {
     const entry = get().entries.get(id);
     if (!entry) return;
     const uid = get().activeUid || 'demo-local-user';
-    await repository.saveEntry(uid, {
+    
+    // Optimistically toggle bookmark in 0ms
+    const updated: Entry = {
       ...entry,
       bookmarked: !entry.bookmarked,
       updatedAt: Date.now(),
-    });
+    };
+    const nextEntries = new Map(get().entries);
+    nextEntries.set(id, updated);
+    set({ entries: nextEntries });
+
+    repository.saveEntry(uid, updated).catch(console.warn);
   },
 
   togglePin: async (id: string) => {
@@ -301,20 +335,30 @@ export const useJournalStore = create<JournalState>((set, get) => ({
         };
       }
 
-      await repository.saveEntry(uid, {
+      const updated: Entry = {
         ...entry,
         pinned: true,
         pinnedAt: Date.now(),
         updatedAt: Date.now(),
-      });
+      };
+      const nextEntries = new Map(get().entries);
+      nextEntries.set(id, updated);
+      set({ entries: nextEntries });
+
+      repository.saveEntry(uid, updated).catch(console.warn);
       return { success: true };
     } else {
-      await repository.saveEntry(uid, {
+      const updated: Entry = {
         ...entry,
         pinned: false,
         pinnedAt: null,
         updatedAt: Date.now(),
-      });
+      };
+      const nextEntries = new Map(get().entries);
+      nextEntries.set(id, updated);
+      set({ entries: nextEntries });
+
+      repository.saveEntry(uid, updated).catch(console.warn);
       return { success: true };
     }
   },
@@ -322,20 +366,25 @@ export const useJournalStore = create<JournalState>((set, get) => ({
   assignFolders: async (entryIds: string[], folderIds: string[]) => {
     const uid = get().activeUid || 'demo-local-user';
     const entriesToUpdate: Entry[] = [];
-    const entries = get().entries;
+    const nextEntries = new Map(get().entries);
+    const finalFolderIds = folderIds.length > 0 ? folderIds : [CONFIG.defaultFolderId];
 
     entryIds.forEach((id) => {
-      const entry = entries.get(id);
+      const entry = nextEntries.get(id);
       if (entry) {
-        entriesToUpdate.push({
+        const updated: Entry = {
           ...entry,
-          folderIds: folderIds.length > 0 ? folderIds : [CONFIG.defaultFolderId],
+          folderIds: finalFolderIds,
           updatedAt: Date.now(),
-        });
+        };
+        entriesToUpdate.push(updated);
+        nextEntries.set(id, updated);
       }
     });
 
-    await repository.batchSaveEntries(uid, entriesToUpdate);
+    // Optimistically update in 0ms
+    set({ entries: nextEntries });
+    repository.batchSaveEntries(uid, entriesToUpdate).catch(console.warn);
   },
 
   addTagToEntries: async (entryIds: string[], rawTag: string) => {
@@ -343,40 +392,46 @@ export const useJournalStore = create<JournalState>((set, get) => ({
     if (!tag) return;
     const uid = get().activeUid || 'demo-local-user';
     const entriesToUpdate: Entry[] = [];
-    const entries = get().entries;
+    const nextEntries = new Map(get().entries);
 
     entryIds.forEach((id) => {
-      const entry = entries.get(id);
+      const entry = nextEntries.get(id);
       if (entry && !entry.tags.includes(tag)) {
-        entriesToUpdate.push({
+        const updated: Entry = {
           ...entry,
           tags: [...entry.tags, tag],
           updatedAt: Date.now(),
-        });
+        };
+        entriesToUpdate.push(updated);
+        nextEntries.set(id, updated);
       }
     });
 
-    await repository.batchSaveEntries(uid, entriesToUpdate);
+    set({ entries: nextEntries });
+    repository.batchSaveEntries(uid, entriesToUpdate).catch(console.warn);
   },
 
   removeTagFromEntries: async (entryIds: string[], rawTag: string) => {
     const tag = rawTag.trim().toLowerCase();
     const uid = get().activeUid || 'demo-local-user';
     const entriesToUpdate: Entry[] = [];
-    const entries = get().entries;
+    const nextEntries = new Map(get().entries);
 
     entryIds.forEach((id) => {
-      const entry = entries.get(id);
+      const entry = nextEntries.get(id);
       if (entry && entry.tags.includes(tag)) {
-        entriesToUpdate.push({
+        const updated: Entry = {
           ...entry,
           tags: entry.tags.filter((t) => t !== tag),
           updatedAt: Date.now(),
-        });
+        };
+        entriesToUpdate.push(updated);
+        nextEntries.set(id, updated);
       }
     });
 
-    await repository.batchSaveEntries(uid, entriesToUpdate);
+    set({ entries: nextEntries });
+    repository.batchSaveEntries(uid, entriesToUpdate).catch(console.warn);
   },
 
   renameTag: async (oldTag: string, newTag: string) => {
@@ -386,46 +441,53 @@ export const useJournalStore = create<JournalState>((set, get) => ({
 
     const uid = get().activeUid || 'demo-local-user';
     const entriesToUpdate: Entry[] = [];
+    const nextEntries = new Map(get().entries);
 
-    get().entries.forEach((entry) => {
+    nextEntries.forEach((entry, id) => {
       if (entry.tags.includes(normOld)) {
         const nextTags = Array.from(
           new Set(entry.tags.map((t) => (t === normOld ? normNew : t)))
         );
-        entriesToUpdate.push({
+        const updated: Entry = {
           ...entry,
           tags: nextTags,
           updatedAt: Date.now(),
-        });
+        };
+        entriesToUpdate.push(updated);
+        nextEntries.set(id, updated);
       }
     });
 
-    await repository.batchSaveEntries(uid, entriesToUpdate);
+    set({ entries: nextEntries });
+    repository.batchSaveEntries(uid, entriesToUpdate).catch(console.warn);
   },
 
   bulkDelete: async (entryIds: string[]) => {
     const uid = get().activeUid || 'demo-local-user';
     const entriesToUpdate: Entry[] = [];
-    const entries = get().entries;
+    const nextEntries = new Map(get().entries);
 
     entryIds.forEach((id) => {
-      const entry = entries.get(id);
+      const entry = nextEntries.get(id);
       if (entry) {
-        entriesToUpdate.push({
+        const updated: Entry = {
           ...entry,
           deletedAt: Date.now(),
           pinned: false,
           pinnedAt: null,
           updatedAt: Date.now(),
-        });
+        };
+        entriesToUpdate.push(updated);
+        nextEntries.set(id, updated);
+        searchEngine.removeEntry(id);
         shareRepository.getShareByEntryId(uid, id).then((share) => {
           if (share && share.active) shareRepository.setShareActive(share.id, false).catch(console.warn);
         }).catch(console.warn);
       }
     });
 
-    await repository.batchSaveEntries(uid, entriesToUpdate);
-    set({ isSelectMode: false, selectedEntryIds: new Set() });
+    set({ entries: nextEntries, isSelectMode: false, selectedEntryIds: new Set() });
+    repository.batchSaveEntries(uid, entriesToUpdate).catch(console.warn);
   },
 
   saveFolder: async (folderData: Partial<Folder> & { id?: string }) => {

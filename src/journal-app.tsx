@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { motion, AnimatePresence } from "motion/react";
 import { PanelLeft } from "lucide-react";
 import { useAuthStore } from "./store/useAuthStore";
 import { useJournalStore } from "./store/useJournalStore";
@@ -158,6 +159,48 @@ export default function JournalApp() {
     setScreen("editor");
   };
 
+  const handleNewEntryWithDate = (dateTimestamp: number) => {
+    if (!user) {
+      toast.info("Please sign in or create an account to start journaling");
+      setShowAuthModal(true);
+      return;
+    }
+    haptics.medium();
+    const now = Date.now();
+    const newId = `entry-${now}-${Math.random().toString(36).substring(2, 7)}`;
+    const targetFolderId = folderId && folderId !== "all" ? folderId : CONFIG.defaultFolderId;
+    const newDraft: Entry = {
+      id: newId,
+      title: "",
+      bodyJson: "",
+      plainText: "",
+      snippet: "",
+      entryDate: dateTimestamp,
+      createdAt: now,
+      updatedAt: now,
+      folderIds: [targetFolderId],
+      tags: [],
+      bookmarked: false,
+      pinned: false,
+      pinnedAt: null,
+      mood: null,
+      media: [],
+      coverThumb: null,
+      songs: [],
+      location: null,
+      attachmentOrder: [],
+      wordCount: 0,
+      deletedAt: null,
+      source: "app",
+      importKey: null,
+      schemaVersion: 1,
+    };
+    setNewDraftEntry(newDraft);
+    setActiveEntryId(newId);
+    setIsNewEntryMode(true);
+    setScreen("editor");
+  };
+
   const handleOpenEntry = (id: string) => {
     haptics.light();
     setNewDraftEntry(null);
@@ -289,15 +332,13 @@ export default function JournalApp() {
                   hideFab={screen === "editor"}
                   selectedDateFilter={selectedDateFilter}
                   onClearDateFilter={() => setSelectedDateFilter(null)}
+                  onNewEntryWithDate={handleNewEntryWithDate}
                 />
               ) : null}
             </section>
 
-            <main
-              className={`${
-                screen === "editor" ? "flex" : "hidden lg:flex"
-              } flex-1 h-full min-w-0 bg-app-bg`}
-            >
+            {/* Desktop split view pane (lg and above) */}
+            <main className="hidden lg:flex flex-1 h-full min-w-0 bg-app-bg">
               {showEditorPane && activeEntry ? (
                 <EntryEditorView
                   key={activeEntry.id}
@@ -331,6 +372,42 @@ export default function JournalApp() {
                 </div>
               )}
             </main>
+
+            {/* Smartphone / Mobile sheet card (< lg) matching Apple Journal */}
+            <AnimatePresence>
+              {screen === "editor" && activeEntry && (
+                <div className="lg:hidden fixed inset-0 z-50 flex flex-col justify-end">
+                  {/* Backdrop */}
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={handleBackFromEditor}
+                    className="fixed inset-0 bg-black/60 backdrop-blur-xs"
+                  />
+                  {/* Card Container */}
+                  <motion.div
+                    initial={{ y: "100%" }}
+                    animate={{ y: 0 }}
+                    exit={{ y: "100%" }}
+                    transition={{ type: "spring", damping: 32, stiffness: 320 }}
+                    className="relative z-10 w-full h-[95vh] rounded-t-[32px] bg-app-bg text-app-text-primary shadow-2xl overflow-hidden flex flex-col border-t border-app-card-border"
+                  >
+                    <EntryEditorView
+                      key={activeEntry.id}
+                      entry={activeEntry}
+                      initialEditMode={isNewEntryMode}
+                      onBack={handleBackFromEditor}
+                      onEntryUpdated={(updated) => {
+                        if (newDraftEntry?.id === updated.id) {
+                          setNewDraftEntry(null);
+                        }
+                      }}
+                    />
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
           </>
         )}
       </div>

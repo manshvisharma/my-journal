@@ -448,10 +448,24 @@ export const EntryEditorView: React.FC<EntryEditorViewProps> = ({
     };
   }, [saveCurrentState]);
 
+  const handleToggleBookmark = () => {
+    haptics.selection();
+    const nextBookmarked = !isBookmarked;
+    setIsBookmarked(nextBookmarked);
+    isDirtyRef.current = true;
+    scheduleAutosave();
+    toggleBookmark(entry.id);
+  };
+
   const handleDone = async () => {
     haptics.success();
-    await saveCurrentState(true);
+    try {
+      await saveCurrentState(true);
+    } catch (err) {
+      console.warn('Error saving state:', err);
+    }
     setIsEditing(false);
+    onBack();
   };
 
   const handleBackClick = () => {
@@ -558,86 +572,70 @@ export const EntryEditorView: React.FC<EntryEditorViewProps> = ({
 
   return (
     <div className="relative flex flex-col h-full w-full bg-app-bg overflow-hidden select-none">
-      {/* Top Header Bar with iOS Safe Area Clearance */}
+      {/* Top Header Bar matching Apple Journal screenshot media_1791278747786.png */}
       <header className="px-4 sm:px-8 pt-safe border-b border-app-hairline shrink-0 backdrop-blur-md z-30">
         <div className="h-14 flex items-center justify-between">
+          <div className="flex items-center gap-1">
+            {/* Desktop Back button */}
+            <button
+              type="button"
+              onClick={handleBackClick}
+              className="hidden sm:flex items-center gap-1 p-2 -ml-2 rounded-full text-app-accent hover:opacity-80 transition"
+              aria-label="Back"
+            >
+              <ChevronLeft className="w-5 h-5" />
+              <span className="text-sm font-medium">Journals</span>
+            </button>
+
+            {/* Bookmark ribbon button matching Apple Journal screenshot */}
+            <button
+              type="button"
+              onClick={handleToggleBookmark}
+              className="p-2 -ml-2 sm:ml-0 rounded-full text-[#5856D6] dark:text-[#7066F2] hover:opacity-80 transition active:scale-95"
+              aria-label="Bookmark entry"
+              title={isBookmarked ? "Bookmarked" : "Bookmark"}
+            >
+              <Bookmark className={`w-6 h-6 stroke-[2] ${isBookmarked ? 'fill-current' : ''}`} />
+            </button>
+          </div>
+
+          {/* Centered Date in bold, clean font matching screenshot */}
           <button
             type="button"
-            onClick={handleBackClick}
-            className="flex items-center gap-1.5 p-2 -ml-2 rounded-full text-app-accent hover:opacity-80 transition"
-            aria-label="Back"
+            onClick={() => {
+              haptics.selection();
+              setShowDatePicker(true);
+            }}
+            className="text-[17px] font-bold text-black dark:text-white hover:opacity-80 transition px-3 py-1 rounded-xl hover:bg-black/5 dark:hover:bg-white/10"
           >
-            <ChevronLeft className="w-5 h-5" />
-            <span className="text-sm font-medium hidden sm:inline">Journals</span>
+            <span className="sm:hidden">{formattedDateShort}</span>
+            <span className="hidden sm:inline">{formattedDate}</span>
           </button>
 
-        {/* Date Centered (Tapping opens IOSDateTimePicker) */}
-        <button
-          type="button"
-          onClick={() => {
-            haptics.selection();
-            setShowDatePicker(true);
-          }}
-          className="text-xs font-semibold uppercase tracking-wider text-app-text-secondary hover:text-app-text-primary px-3 py-1.5 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition"
-        >
-          {/* Mobile: short date without time; Desktop: full date */}
-          <span className="sm:hidden">{formattedDateShort}</span>
-          <span className="hidden sm:inline">{formattedDate}</span>
-        </button>
+          {/* Right actions: circular More button + Done text button */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                haptics.light();
+                setShowMoreMenu(true);
+              }}
+              className="w-7 h-7 rounded-full border border-[#5856D6]/40 dark:border-[#7066F2]/50 text-[#5856D6] dark:text-[#7066F2] flex items-center justify-center hover:bg-black/5 dark:hover:bg-white/10 transition active:scale-95"
+              aria-label="More actions"
+            >
+              <MoreHorizontal className="w-4 h-4 stroke-[2.5]" />
+            </button>
 
-        {/* Right action: Edit or Done */}
-        <div className="flex items-center gap-2">
-          {!isEditing ? (
-            <>
-              {/* Share icon — only show on desktop; on mobile it's in the ••• menu */}
-              <button
-                type="button"
-                onClick={() => {
-                  haptics.light();
-                  setShowShareSheet(true);
-                }}
-                className="hidden sm:flex p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-app-text-secondary hover:text-app-text-primary transition"
-                aria-label="Share entry"
-                title="Share"
-              >
-                <Share2 className="w-5 h-5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  haptics.light();
-                  setShowMoreMenu(true);
-                }}
-                className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-app-text-secondary hover:text-app-text-primary transition"
-                aria-label="Entry actions"
-              >
-                <MoreHorizontal className="w-5 h-5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  haptics.light();
-                  setIsEditing(true);
-                  setTimeout(() => titleInputRef.current?.focus(), 50);
-                }}
-                className="px-4 py-1.5 rounded-full bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/15 text-app-text-primary text-sm font-semibold border border-app-hairline transition active:scale-95"
-              >
-                Edit
-              </button>
-            </>
-          ) : (
             <button
               type="button"
               onClick={handleDone}
-              className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-app-accent hover:bg-app-accent-light text-white text-sm font-bold shadow-md transition active:scale-95"
+              className="text-[#5856D6] dark:text-[#7066F2] font-semibold text-[17px] pl-2 pr-1 hover:opacity-80 active:scale-95 transition"
             >
-              <Check className="w-4 h-4 stroke-[3]" />
-              <span>Done</span>
+              Done
             </button>
-          )}
+          </div>
         </div>
-      </div>
-    </header>
+      </header>
 
 
       {/* Multi-device collision warning banner */}

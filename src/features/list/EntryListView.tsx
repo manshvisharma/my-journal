@@ -51,6 +51,7 @@ interface EntryListViewProps {
   hideFab?: boolean;
   selectedDateFilter?: string | null;
   onClearDateFilter?: () => void;
+  onNewEntryWithDate?: (timestamp: number) => void;
 }
 
 export const EntryListView: React.FC<EntryListViewProps> = ({
@@ -65,6 +66,7 @@ export const EntryListView: React.FC<EntryListViewProps> = ({
   hideFab = false,
   selectedDateFilter,
   onClearDateFilter,
+  onNewEntryWithDate,
 }) => {
   const folders = useFoldersList();
   const foldersMap = useMemo(() => {
@@ -141,12 +143,23 @@ export const EntryListView: React.FC<EntryListViewProps> = ({
 
   const displayedEntries = useMemo(() => {
     if (!dateFilter) return entries;
+    const [filterY, filterM, filterD] = dateFilter.split('-').map(Number);
     return entries.filter((entry) => {
+      if (entry.deletedAt) return false;
       const d = new Date(entry.entryDate);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      return key === dateFilter;
+      return (
+        d.getFullYear() === filterY &&
+        d.getMonth() + 1 === filterM &&
+        d.getDate() === filterD
+      );
     });
   }, [entries, dateFilter]);
+
+  const formattedFilterDate = useMemo(() => {
+    if (!dateFilter) return '';
+    const [y, m, d] = dateFilter.split('-').map(Number);
+    return format(new Date(y, m - 1, d), 'EEEE, d MMMM yyyy');
+  }, [dateFilter]);
 
   // Group entries by date sections matching Apple Journal screenshots
   const currentYear = new Date().getFullYear();
@@ -518,7 +531,7 @@ export const EntryListView: React.FC<EntryListViewProps> = ({
         {/* Date Filter Active Banner */}
         {dateFilter && (
           <div className="flex items-center justify-between px-4 py-2.5 rounded-2xl bg-app-accent-tint border border-app-accent/30 text-app-accent text-sm font-semibold">
-            <span>Filtered by date: {format(new Date(dateFilter + 'T00:00:00'), 'EEEE, d MMMM yyyy')}</span>
+            <span>Filtered by date: {formattedFilterDate}</span>
             <button
               type="button"
               onClick={() => {
@@ -553,12 +566,12 @@ export const EntryListView: React.FC<EntryListViewProps> = ({
         )}
 
         {/* On This Day Horizontal Section */}
-        {!isTrash && onThisDayEntries.length > 0 && !folderId && (
+        {!dateFilter && !isTrash && onThisDayEntries.length > 0 && !folderId && (
           <OnThisDayCard entries={onThisDayEntries} onOpenEntry={onOpenEntry} />
         )}
 
         {/* Pinned Section */}
-        {!isTrash && pinnedEntries.length > 0 && !folderId && (
+        {!dateFilter && !isTrash && pinnedEntries.length > 0 && !folderId && (
           <section className="space-y-3">
             <h2 className="text-[13px] font-bold uppercase tracking-wider text-app-accent px-1">
               PINNED
@@ -582,30 +595,59 @@ export const EntryListView: React.FC<EntryListViewProps> = ({
           </section>
         )}
 
-        {/* Date-Grouped Entries (Headers: Today, Yesterday, September, August 2026) */}
-        {entries.length === 0 ? (
-          <div className="text-center py-20">
-            <div className="w-16 h-16 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center mx-auto mb-4 border border-app-hairline">
-              <Sparkles className="w-7 h-7 text-app-text-tertiary" />
-            </div>
-            <h3 className="text-lg font-bold text-app-text-primary mb-1">
-              {isTrash ? 'Trash is Empty' : 'No entries yet'}
-            </h3>
-            <p className="text-sm text-app-text-secondary max-w-xs mx-auto mb-6 leading-relaxed">
-              {isTrash
-                ? 'Deleted entries are permanently purged after 30 days.'
-                : 'Capture your thoughts, reflections, and moments.'}
-            </p>
-            {!isTrash && (
+        {/* Date-Grouped Entries or Empty State */}
+        {displayedEntries.length === 0 ? (
+          dateFilter ? (
+            <div className="text-center py-16 px-4">
+              <div className="w-16 h-16 rounded-full bg-app-accent-tint flex items-center justify-center mx-auto mb-4 border border-app-accent/20">
+                <CalendarIcon className="w-7 h-7 text-app-accent" />
+              </div>
+              <h3 className="text-lg font-bold text-app-text-primary mb-1">
+                No entries on {formattedFilterDate}
+              </h3>
+              <p className="text-sm text-app-text-secondary max-w-xs mx-auto mb-6 leading-relaxed">
+                You haven't written anything for this day.
+              </p>
               <button
                 type="button"
-                onClick={onNewEntry}
+                onClick={() => {
+                  const [y, m, d] = dateFilter.split('-').map(Number);
+                  const targetDate = new Date(y, m - 1, d, 12, 0, 0).getTime();
+                  if (onNewEntryWithDate) {
+                    onNewEntryWithDate(targetDate);
+                  } else {
+                    onNewEntry();
+                  }
+                }}
                 className="px-5 py-2.5 rounded-full bg-app-accent text-white text-sm font-semibold shadow-md active:scale-95 transition"
               >
-                Write an Entry
+                + Write for this day
               </button>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="text-center py-20">
+              <div className="w-16 h-16 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center mx-auto mb-4 border border-app-hairline">
+                <Sparkles className="w-7 h-7 text-app-text-tertiary" />
+              </div>
+              <h3 className="text-lg font-bold text-app-text-primary mb-1">
+                {isTrash ? 'Trash is Empty' : 'No entries yet'}
+              </h3>
+              <p className="text-sm text-app-text-secondary max-w-xs mx-auto mb-6 leading-relaxed">
+                {isTrash
+                  ? 'Deleted entries are permanently purged after 30 days.'
+                  : 'Capture your thoughts, reflections, and moments.'}
+              </p>
+              {!isTrash && (
+                <button
+                  type="button"
+                  onClick={onNewEntry}
+                  className="px-5 py-2.5 rounded-full bg-app-accent text-white text-sm font-semibold shadow-md active:scale-95 transition"
+                >
+                  Write an Entry
+                </button>
+              )}
+            </div>
+          )
         ) : (
           groupedSections.map((section) => (
             <section key={section.title} className="space-y-3">

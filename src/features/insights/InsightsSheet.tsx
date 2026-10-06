@@ -10,6 +10,7 @@ import {
   ImageIcon,
   Music,
   MapPin,
+  Bookmark,
   Dumbbell,
   Headphones,
 } from 'lucide-react';
@@ -164,7 +165,7 @@ export const InsightsSheet: React.FC<InsightsSheetProps> = ({
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex flex-col justify-end">
+        <div className="fixed inset-0 z-50 flex flex-col justify-end sm:items-center sm:justify-center sm:p-4">
           {/* Backdrop */}
           <motion.div
             key="insights-backdrop"
@@ -175,14 +176,14 @@ export const InsightsSheet: React.FC<InsightsSheetProps> = ({
             className="fixed inset-0 bg-black/60 backdrop-blur-sm"
           />
 
-          {/* Main Sheet Container */}
+          {/* Main Sheet Container: mobile bottom sheet, desktop compact centered card */}
           <motion.div
             key="insights-sheet"
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 32, stiffness: 320 }}
-            className="relative z-10 w-full max-h-[92vh] flex flex-col rounded-t-[32px] bg-[#F2F2F7] dark:bg-[#0C0C12] text-app-text-primary border-t border-black/5 dark:border-white/10 shadow-2xl overflow-hidden select-none"
+            className="relative z-10 w-full sm:max-w-[480px] md:max-w-[500px] max-h-[92vh] sm:max-h-[86vh] flex flex-col rounded-t-[32px] sm:rounded-[32px] bg-[#F2F2F7] dark:bg-[#0C0C12] text-app-text-primary border-t sm:border border-black/5 dark:border-white/10 shadow-2xl overflow-hidden select-none"
           >
             {/* Safe-Area Top & Header */}
             <div className="pt-[max(env(safe-area-inset-top,0px),12px)] px-5 pb-3 border-b border-black/5 dark:border-white/10 shrink-0">
@@ -770,17 +771,29 @@ export const InsightsSheet: React.FC<InsightsSheetProps> = ({
                       </div>
                     </motion.div>
 
-                    {/* 2. Visited (Suitcase icon matching Apple Journal) */}
+                    {/* 2. Middle Tile: Locations / Saved (Real User Metrics) */}
                     <motion.div
                       layout
                       transition={springTransition}
                       onClick={() => haptics.light()}
                       className="p-3.5 sm:p-4 rounded-[20px] bg-gradient-to-br from-[#4C5375] to-[#3B4160] text-white shadow-md flex flex-col justify-between items-center text-center aspect-square active:scale-[0.98] transition-transform"
                     >
-                      <span className="text-[12px] font-medium text-white/80 block">Visited</span>
-                      <Briefcase className="w-6 h-6 text-white my-auto" />
                       <span className="text-[12px] font-medium text-white/80 block">
-                        {breakdown.placesCount || 1} {breakdown.placesCount === 1 ? 'time' : 'times'}
+                        {breakdown.placesCount > 0 ? 'Locations' : breakdown.bookmarkedCount > 0 ? 'Saved' : 'Locations'}
+                      </span>
+                      {breakdown.placesCount > 0 ? (
+                        <MapPin className="w-6 h-6 text-white my-auto" />
+                      ) : breakdown.bookmarkedCount > 0 ? (
+                        <Bookmark className="w-6 h-6 text-white my-auto fill-current" />
+                      ) : (
+                        <MapPin className="w-6 h-6 text-white/70 my-auto" />
+                      )}
+                      <span className="text-[12px] font-medium text-white/80 block">
+                        {breakdown.placesCount > 0
+                          ? `${breakdown.placesCount} ${breakdown.placesCount === 1 ? 'location' : 'locations'}`
+                          : breakdown.bookmarkedCount > 0
+                          ? `${breakdown.bookmarkedCount} ${breakdown.bookmarkedCount === 1 ? 'saved' : 'saved'}`
+                          : '0 visited'}
                       </span>
                     </motion.div>
 
@@ -843,7 +856,7 @@ export const InsightsSheet: React.FC<InsightsSheetProps> = ({
                       </div>
                     </motion.div>
 
-                    {/* Right Column Stack: Visited (top) & Written (bottom) */}
+                    {/* Right Column Stack: Visited/Locations (top) & Written (bottom) */}
                     <div className="flex flex-col gap-2.5">
                       <motion.div
                         layout
@@ -851,10 +864,22 @@ export const InsightsSheet: React.FC<InsightsSheetProps> = ({
                         onClick={() => haptics.light()}
                         className="p-3 rounded-[18px] bg-gradient-to-br from-[#4C5375] to-[#3B4160] text-white shadow-sm flex-1 flex flex-col justify-between items-center text-center py-3"
                       >
-                        <span className="text-[11px] text-white/80 block">Visited</span>
-                        <Briefcase className="w-5 h-5 text-white" />
                         <span className="text-[11px] text-white/80 block">
-                          {breakdown.placesCount || 1} {breakdown.placesCount === 1 ? 'time' : 'times'}
+                          {breakdown.placesCount > 0 ? 'Locations' : breakdown.bookmarkedCount > 0 ? 'Saved' : 'Locations'}
+                        </span>
+                        {breakdown.placesCount > 0 ? (
+                          <MapPin className="w-5 h-5 text-white" />
+                        ) : breakdown.bookmarkedCount > 0 ? (
+                          <Bookmark className="w-5 h-5 text-white fill-current" />
+                        ) : (
+                          <MapPin className="w-5 h-5 text-white/70" />
+                        )}
+                        <span className="text-[11px] text-white/80 block">
+                          {breakdown.placesCount > 0
+                            ? `${breakdown.placesCount} ${breakdown.placesCount === 1 ? 'place' : 'places'}`
+                            : breakdown.bookmarkedCount > 0
+                            ? `${breakdown.bookmarkedCount} ${breakdown.bookmarkedCount === 1 ? 'saved' : 'saved'}`
+                            : '0 visited'}
                         </span>
                       </motion.div>
 
@@ -882,7 +907,7 @@ export const InsightsSheet: React.FC<InsightsSheetProps> = ({
                 {/* State D: "Written" tapped -> Tall card on right, remaining stacked on left */}
                 {focusedStat === 'written' && (
                   <div className="grid grid-cols-3 gap-2.5">
-                    {/* Left Column Stack: Journaled (top) & Visited (bottom) */}
+                    {/* Left Column Stack: Journaled (top) & Visited/Locations (bottom) */}
                     <div className="flex flex-col gap-2.5">
                       <motion.div
                         layout
@@ -906,10 +931,22 @@ export const InsightsSheet: React.FC<InsightsSheetProps> = ({
                         onClick={() => haptics.light()}
                         className="p-3 rounded-[18px] bg-gradient-to-br from-[#4C5375] to-[#3B4160] text-white shadow-sm flex-1 flex flex-col justify-between items-center text-center py-3"
                       >
-                        <span className="text-[11px] text-white/80 block">Visited</span>
-                        <Briefcase className="w-5 h-5 text-white" />
                         <span className="text-[11px] text-white/80 block">
-                          {breakdown.placesCount || 1} {breakdown.placesCount === 1 ? 'time' : 'times'}
+                          {breakdown.placesCount > 0 ? 'Locations' : breakdown.bookmarkedCount > 0 ? 'Saved' : 'Locations'}
+                        </span>
+                        {breakdown.placesCount > 0 ? (
+                          <MapPin className="w-5 h-5 text-white" />
+                        ) : breakdown.bookmarkedCount > 0 ? (
+                          <Bookmark className="w-5 h-5 text-white fill-current" />
+                        ) : (
+                          <MapPin className="w-5 h-5 text-white/70" />
+                        )}
+                        <span className="text-[11px] text-white/80 block">
+                          {breakdown.placesCount > 0
+                            ? `${breakdown.placesCount} ${breakdown.placesCount === 1 ? 'place' : 'places'}`
+                            : breakdown.bookmarkedCount > 0
+                            ? `${breakdown.bookmarkedCount} ${breakdown.bookmarkedCount === 1 ? 'saved' : 'saved'}`
+                            : '0 visited'}
                         </span>
                       </motion.div>
                     </div>
@@ -1024,25 +1061,23 @@ export const InsightsSheet: React.FC<InsightsSheetProps> = ({
                         <div
                           key={day}
                           onClick={() => {
-                            if (hasEntries) {
-                              haptics.selection();
-                              onClose();
-                              if (onSelectDateFilter) {
-                                onSelectDateFilter(dateKey);
-                              }
+                            haptics.selection();
+                            onClose();
+                            if (onSelectDateFilter) {
+                              onSelectDateFilter(dateKey);
                             }
                           }}
-                          className={`aspect-square rounded-xl flex flex-col items-center justify-center relative transition ${
-                            hasEntries
-                              ? 'cursor-pointer hover:bg-black/5 dark:hover:bg-white/10 active:scale-95'
-                              : 'opacity-40 cursor-default'
+                          className={`aspect-square rounded-xl flex flex-col items-center justify-center relative transition cursor-pointer hover:bg-black/5 dark:hover:bg-white/10 active:scale-95 ${
+                            hasEntries ? '' : 'text-black/60 dark:text-white/60'
                           }`}
                         >
                           <span
                             className={`text-[13px] font-semibold flex items-center justify-center ${
                               isToday
                                 ? 'w-7 h-7 rounded-full bg-[#5856D6] dark:bg-[#7066F2] text-white shadow-xs'
-                                : 'text-black dark:text-white'
+                                : hasEntries
+                                ? 'text-black dark:text-white font-bold'
+                                : 'text-black/75 dark:text-white/75'
                             }`}
                           >
                             {day}
