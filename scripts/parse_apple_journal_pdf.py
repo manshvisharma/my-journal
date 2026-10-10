@@ -75,10 +75,9 @@ def resize_and_compress(pil_img, max_dim, max_bytes, initial_quality):
     b64 = base64.b64encode(out_bytes.getvalue()).decode('utf-8')
     return f"data:image/jpeg;base64,{b64}", w, h
 
-def tiptap_doc_from_text(plain_text):
-    paragraphs = plain_text.split('\n')
+def tiptap_doc_from_paras(paras):
     content = []
-    for p in paragraphs:
+    for p in paras:
         p_clean = p.strip()
         if p_clean:
             content.append({
@@ -91,12 +90,64 @@ def tiptap_doc_from_text(plain_text):
         content = [{"type": "paragraph"}]
     return json.dumps({"type": "doc", "content": content})
 
+date_pattern = re.compile(r'^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),\s+(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})')
+
+def extract_page_lines(page):
+    d = page.get_text('dict')
+    raw_spans = []
+    for b in d['blocks']:
+        if b.get('type') == 0:
+            for l in b['lines']:
+                for s in l['spans']:
+                    t = clean_apple_text(s.get('text', ''))
+                    if t:
+                        raw_spans.append((s['bbox'], t, s.get('size', 0), s.get('font', '')))
+    raw_spans.sort(key=lambda x: (round(x[0][1], 0), round(x[0][0], 1)))
+    
+    lines = []
+    curr_y = None
+    curr_spans = []
+    for bbox, text, sz, font in raw_spans:
+        y0 = bbox[1]
+        if curr_y is None or abs(y0 - curr_y) < 3.5:
+            curr_y = y0 if curr_y is None else min(curr_y, y0)
+            curr_spans.append((bbox, text, sz, font))
+        else:
+            curr_spans.sort(key=lambda s: s[0][0])
+            line_text = ' '.join([s[1] for s in curr_spans])
+            min_y = min(s[0][1] for s in curr_spans)
+            max_x = max(s[0][2] for s in curr_spans)
+            max_sz = max(s[2] for s in curr_spans)
+            font_name = curr_spans[0][3]
+            lines.append({
+                'y': min_y,
+                'maxx': max_x,
+                'text': line_text,
+                'size': max_sz,
+                'font': font_name
+            })
+            curr_y = y0
+            curr_spans = [(bbox, text, sz, font)]
+    if curr_spans:
+        curr_spans.sort(key=lambda s: s[0][0])
+        line_text = ' '.join([s[1] for s in curr_spans])
+        min_y = min(s[0][1] for s in curr_spans)
+        max_x = max(s[0][2] for s in curr_spans)
+        max_sz = max(s[2] for s in curr_spans)
+        font_name = curr_spans[0][3]
+        lines.append({
+            'y': min_y,
+            'maxx': max_x,
+            'text': line_text,
+            'size': max_sz,
+            'font': font_name
+        })
+    return lines
+
 pdf_path = "journalPdf/Journal 2.pdf"
 doc = pymupdf.open(pdf_path)
 total_pages = len(doc)
 print(f"Loaded '{pdf_path}' with {total_pages} pages.")
-
-date_pattern = re.compile(r'^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),\s+(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})')
 
 # 1. First pass: group pages into entries
 entry_page_groups = []
@@ -143,14 +194,12 @@ if current_group:
 
 print(f"Detected {len(entry_page_groups)} entry page groups.")
 
-# Track date counts for descending millisecond offsets (latest entry on day gets +offset)
 date_occurrences = {}
 for g in entry_page_groups:
     ds = g["date_str"]
     date_occurrences[ds] = date_occurrences.get(ds, 0) + 1
 
 date_counters = {}
-
 all_entries = []
 all_media_docs = []
 
@@ -160,79 +209,65 @@ for entry_idx, group in enumerate(entry_page_groups):
     date_str = group["date_str"]
     pages = group["pages"]
     
-    # Calculate base date timestamp
     dt = datetime.strptime(date_str, "%A, %d %B %Y")
     base_ts = int(dt.timestamp() * 1000)
     
-    # Offset so entries on same day preserve reverse-chronological order
     total_on_date = date_occurrences[date_str]
     curr_occ = date_counters.get(date_str, 0)
     date_counters[date_str] = curr_occ + 1
-    # Latest in PDF gets higher time (e.g. 20:00, 19:00, 18:00...)
     hour_offset = max(0, (total_on_date - 1 - curr_occ)) * 3600 * 1000
-    entry_ts = base_ts + 12 * 3600 * 1000 + hour_offset # noon base + offset
+    entry_ts = base_ts + 12 * 3600 * 1000 + hour_offset
     
     entry_id = f"entry-{entry_ts}-{entry_idx:04d}"
     
-    # Extract spans, text, photos, and moods across all pages in this group
-    raw_lines = []
     title = ""
     mood_labels = []
     mood_impacts = []
     media_refs = []
     media_docs_for_entry = []
+    all_body_lines = []
     
     for p_offset, pno in enumerate(pages):
         page = doc[pno]
-        text_dict = page.get_text("dict")
+        page_lines = extract_page_lines(page)
         
-        # Check spans
-        spans_on_page = []
-        for b in text_dict.get("blocks", []):
-            if b.get("type") == 0:
-                for l in b.get("lines", []):
-                    for s in l.get("spans", []):
-                        t = clean_apple_text(s.get("text", ""))
-                        if t:
-                            spans_on_page.append((s, t))
-                            
-        start_idx = 0
-        if p_offset == 0:
-            # First page of entry: identify date and title
-            for idx in range(min(5, len(spans_on_page))):
-                s, t = spans_on_page[idx]
-                if date_pattern.match(t):
-                    start_idx = idx + 1
-                    if start_idx < len(spans_on_page):
-                        next_s, next_t = spans_on_page[start_idx]
-                        title = next_t
-                        start_idx += 1
-                    break
-                    
-        for idx in range(start_idx, len(spans_on_page)):
-            s, t = spans_on_page[idx]
-            font_sz = s.get("size", 0)
+        for l in page_lines:
+            t = l['text']
+            font_sz = l['size']
             
-            # Mood detection
-            if font_sz < 9.5 and ("more" in t or any(k in t.lower() for k in ["sad", "anxious", "peaceful", "happy", "lonely", "drained", "excited", "content", "calm", "scared", "frustrated", "angry", "stressed"])):
-                clean_t = t.replace(" and more", "").replace(" and", "")
-                parts = [p.strip() for p in clean_t.split(",") if p.strip() and p.strip().lower() != "more"]
-                if not mood_labels:
-                    mood_labels.extend(parts)
-                else:
-                    mood_impacts.extend(parts)
-                continue
-            elif font_sz < 9.5 and any(k in t.lower() for k in ["workout", "cal", "media"]):
+            # 1. Date header on first page
+            if p_offset == 0 and date_pattern.match(t):
                 continue
                 
-            raw_lines.append(t)
+            # 2. Mood & metadata spans (font size < 9.5)
+            if font_sz < 9.5:
+                # Check for mood labels vs impacts
+                if any(k in t.lower() for k in ["sad", "anxious", "peaceful", "happy", "lonely", "drained", "excited", "content", "calm", "scared", "frustrated", "angry", "stressed", "worried", "hopeless", "delighted"]):
+                    clean_t = t.replace(" and more", "").replace(" and", "")
+                    parts = [p.strip() for p in clean_t.split(",") if p.strip() and p.strip().lower() != "more"]
+                    mood_labels.extend(parts)
+                elif "more" in t.lower() or any(k in t.lower() for k in ["dating", "partner", "friends", "current events", "self-care", "family", "work", "health", "spirituality"]):
+                    clean_t = t.replace(" and more", "").replace(" and", "")
+                    parts = [p.strip() for p in clean_t.split(",") if p.strip() and p.strip().lower() != "more"]
+                    mood_impacts.extend(parts)
+                # Skip all small text from body
+                continue
+                
+            # 3. Title on first page (size >= 13.5 or bold)
+            if p_offset == 0 and not title and (font_sz >= 13.5 or 'Bold' in l['font']):
+                title = t
+                continue
+                
+            # 4. Body line
+            l_copy = dict(l)
+            l_copy['page_offset'] = p_offset
+            all_body_lines.append(l_copy)
             
         # Photos on page
         img_infos = page.get_image_info()
         for idx_on_page, info in enumerate(img_infos):
             w, h = info.get("width", 0), info.get("height", 0)
             bbox = info.get("bbox", (0, 0, 0, 0))
-            # Filter out emojis (<50px) and mood glyphs (around x0 ~ 86, y0 ~ 128)
             if w > 100 and h > 100 and not (bbox[0] > 70 and bbox[0] < 100 and bbox[1] > 110 and bbox[1] < 150):
                 try:
                     pix = page.get_pixmap(clip=pymupdf.Rect(bbox), dpi=150)
@@ -256,6 +291,54 @@ for entry_idx, group in enumerate(entry_page_groups):
                 except Exception as e:
                     print(f"Warning: Photo extraction on page {pno+1}: {e}")
                     
+    # Reconstruct paragraphs intelligently
+    paras = []
+    curr_para = ""
+    prev_line = None
+    
+    for l in all_body_lines:
+        if prev_line is None:
+            curr_para = l['text']
+        else:
+            diff = l['y'] - prev_line['y']
+            is_cross_page = (l['page_offset'] != prev_line['page_offset'])
+            
+            if is_cross_page:
+                p_text = prev_line['text'].strip()
+                n_text = l['text'].strip()
+                ends_sentence = p_text[-1] in '.!?…:)' if p_text else False
+                starts_upper = n_text[0].isupper() if n_text else True
+                was_full_line = prev_line['maxx'] >= 450
+                
+                if not ends_sentence or not starts_upper or was_full_line:
+                    curr_para += ' ' + n_text
+                else:
+                    paras.append(curr_para)
+                    curr_para = n_text
+            else:
+                # Within same page:
+                # Line wrap in normal paragraph: diff < 20 or full line up to 25
+                if diff < 20.0 or (diff <= 25.0 and prev_line['maxx'] >= 480):
+                    curr_para += ' ' + l['text']
+                else:
+                    paras.append(curr_para)
+                    curr_para = l['text']
+        prev_line = l
+        
+    if curr_para:
+        paras.append(curr_para)
+        
+    # Derive title if missing
+    if not title:
+        if paras:
+            first_p = paras[0]
+            if len(first_p) <= 45:
+                title = first_p
+            else:
+                title = first_p[:42].strip() + "..."
+        else:
+            title = "Untitled Entry"
+            
     # Mood object
     mood = None
     attachment_order = []
@@ -271,16 +354,8 @@ for entry_idx, group in enumerate(entry_page_groups):
     for mref in media_refs:
         attachment_order.append({"type": "photo", "mediaId": mref["id"]})
         
-    plain_text = "\n".join(raw_lines).strip()
-    if not title:
-        # derive from first line
-        if raw_lines:
-            first_l = raw_lines[0]
-            title = first_l[:40] if len(first_l) > 40 else first_l
-        else:
-            title = "Untitled Entry"
-            
-    body_json = tiptap_doc_from_text(plain_text)
+    plain_text = "\n\n".join(paras).strip()
+    body_json = tiptap_doc_from_paras(paras)
     words = [w for w in plain_text.split() if w]
     word_count = len(words)
     snippet = plain_text[:160].replace('\n', ' ')
@@ -317,7 +392,7 @@ for entry_idx, group in enumerate(entry_page_groups):
     
     if (entry_idx + 1) % 50 == 0 or entry_idx == len(entry_page_groups) - 1:
         elapsed = time.time() - start_time
-        print(f"Processed {entry_idx + 1}/{len(entry_page_groups)} entries... ({len(all_media_docs)} photos extracted, {elapsed:.1f}s)")
+        print(f"Processed {entry_idx + 1}/{len(entry_page_groups)} entries... ({len(all_media_docs)} photos, {elapsed:.1f}s)")
 
 doc.close()
 

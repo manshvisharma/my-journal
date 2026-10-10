@@ -35,39 +35,35 @@ async function upload() {
   const uid = cred.user.uid;
   console.log(`Signed in successfully! UID: ${uid}`);
   
-  // 1. Upload Entries in Batches (max 400 operations per batch)
+  // 1. Upload Entries in Batches (max 100 per batch for smooth network transfers)
   console.log("\n--- Uploading Entries ---");
-  const BATCH_SIZE = 400;
-  for (let i = 0; i < entries.length; i += BATCH_SIZE) {
-    const chunk = entries.slice(i, i + BATCH_SIZE);
+  const ENTRY_BATCH = 100;
+  for (let i = 0; i < entries.length; i += ENTRY_BATCH) {
+    const chunk = entries.slice(i, i + ENTRY_BATCH);
     const batch = writeBatch(db);
-    
     chunk.forEach((entry) => {
       const ref = doc(db, "users", uid, "entries", entry.id);
-      batch.set(ref, entry, { merge: true });
+      batch.set(ref, entry);
     });
-    
     await batch.commit();
     console.log(`Uploaded entries ${i + 1} - ${i + chunk.length} of ${entries.length}`);
   }
   
-  // 2. Upload Media Docs in Batches
+  // 2. Upload Media Docs in small batches of 20 (base64 images)
   console.log("\n--- Uploading Media Docs ---");
-  for (let i = 0; i < mediaDocs.length; i += BATCH_SIZE) {
-    const chunk = mediaDocs.slice(i, i + BATCH_SIZE);
+  const MEDIA_BATCH = 20;
+  for (let i = 0; i < mediaDocs.length; i += MEDIA_BATCH) {
+    const chunk = mediaDocs.slice(i, i + MEDIA_BATCH);
     const batch = writeBatch(db);
-    
     chunk.forEach((mDoc) => {
       const ref = doc(db, "users", uid, "media", mDoc.id);
       batch.set(ref, mDoc, { merge: true });
     });
-    
     await batch.commit();
     console.log(`Uploaded media docs ${i + 1} - ${i + chunk.length} of ${mediaDocs.length}`);
   }
   
-  // 3. Set Settings Document
-  console.log("\n--- Setting User Settings ---");
+  // 3. User settings
   const settingsBatch = writeBatch(db);
   const settingsRef = doc(db, "users", uid, "settings", "main");
   settingsBatch.set(settingsRef, {
@@ -77,20 +73,16 @@ async function upload() {
     updatedAt: Date.now()
   }, { merge: true });
   await settingsBatch.commit();
-  console.log("Settings updated successfully.");
   
-  // 4. Verify Counts in Firestore
-  console.log("\n--- Verifying Firestore Counts ---");
+  // 4. Verify Firestore Counts
   const entriesCountSnap = await getCountFromServer(collection(db, "users", uid, "entries"));
   const mediaCountSnap = await getCountFromServer(collection(db, "users", uid, "media"));
   
-  console.log(`Verified Firestore Entries Count: ${entriesCountSnap.data().count}`);
-  console.log(`Verified Firestore Media Count: ${mediaCountSnap.data().count}`);
-  
   console.log("\n========================================================");
-  console.log("UPLOAD COMPLETE & VERIFIED!");
+  console.log("UPLOAD AND VERIFICATION COMPLETE!");
+  console.log(`Verified Entries: ${entriesCountSnap.data().count}`);
+  console.log(`Verified Media Docs: ${mediaCountSnap.data().count}`);
   console.log(`Account Email: ${testEmail}`);
-  console.log(`Account Password: ${testPassword}`);
   console.log(`Account UID: ${uid}`);
   console.log("========================================================");
 }
